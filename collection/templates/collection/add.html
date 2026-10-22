@@ -1,0 +1,58 @@
+{% extends "collection/base.html" %}
+{% load money %}
+{% block title %}Add Cards · Mana Ledger{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <form class="section-head filters" method="get" autocomplete="off">
+    <label for="card-name">Card name</label>
+    <input type="search" id="card-name" name="q" value="{{ q }}" placeholder="e.g. Sol Ring" list="name-suggestions" data-autocomplete="{% url 'collection:autocomplete' %}" required>
+    <datalist id="name-suggestions"></datalist>
+    <label for="card-set">Set code</label>
+    <input type="text" id="card-set" name="set" value="{{ set_code }}" placeholder="optional, e.g. cmm" class="short">
+    <button type="submit" class="btn primary">Search Scryfall</button>
+  </form>
+  <p class="note">Every printing of the card is listed, newest first. Pick the one you own, choose foil or non-foil, and add it. If you already own that printing, the copies are added to what you have.</p>
+
+  {% if error %}
+    <div class="message error">{{ error }}</div>
+  {% endif %}
+
+  {% if results %}
+    <div class="printings">
+      {% for r in results %}
+        <article class="printing">
+          {% if r.image_url %}<img src="{{ r.image_url }}" alt="{{ r.name }} from {{ r.set_name }}" loading="lazy">{% endif %}
+          <div class="printing-body">
+            <h4>{{ r.name }}</h4>
+            <div class="muted small">{{ r.set_name }} · {{ r.set_code|upper }} #{{ r.collector_number }}{% if r.released_at %} · {{ r.released_at|date:"Y" }}{% endif %}</div>
+            <span class="rarity rarity-{{ r.rarity }}">{{ r.rarity|capfirst }}</span>
+            <dl class="prices">
+              {% for f in r.finish_options %}
+                <div><dt>{{ f.label }}</dt><dd>{{ f.price|money }}</dd></div>
+              {% endfor %}
+            </dl>
+            {% if r.owned %}<div class="owned">You own {{ r.owned }}</div>{% endif %}
+            <form method="post" action="{% url 'collection:add_card' %}" class="add-form">
+              {% csrf_token %}
+              <input type="hidden" name="scryfall_id" value="{{ r.scryfall_id }}">
+              <input type="hidden" name="next" value="{{ request.get_full_path }}">
+              <label class="sr" for="finish-{{ r.scryfall_id }}">Finish</label>
+              <select name="finish" id="finish-{{ r.scryfall_id }}">
+                {% for f in r.finish_options %}<option value="{{ f.value }}">{{ f.label }}</option>{% endfor %}
+              </select>
+              <label class="sr" for="qty-{{ r.scryfall_id }}">Copies</label>
+              <input type="number" name="quantity" id="qty-{{ r.scryfall_id }}" value="1" min="1" class="qty" title="Copies">
+              <label class="sr" for="paid-{{ r.scryfall_id }}">Paid each</label>
+              <input type="text" inputmode="decimal" name="purchase_price" id="paid-{{ r.scryfall_id }}" placeholder="Paid $" class="paid" title="What you paid per copy (optional)">
+              <button type="submit" class="btn primary small">Add</button>
+            </form>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  {% elif q and not error %}
+    <p class="note">Scryfall found no cards for "{{ q }}"{% if set_code %} in set {{ set_code|upper }}{% endif %}. Check the spelling or clear the set code.</p>
+  {% endif %}
+</section>
+{% endblock %}

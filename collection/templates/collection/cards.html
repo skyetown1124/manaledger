@@ -1,0 +1,72 @@
+{% extends "collection/base.html" %}
+{% load money %}
+{% block title %}My Cards · Mana Ledger{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <form class="section-head filters" method="get">
+    <label for="card-filter">Find</label>
+    <input type="search" id="card-filter" name="q" value="{{ q }}" placeholder="Card name">
+    <label for="card-sort">Sort by</label>
+    <select id="card-sort" name="sort" onchange="this.form.submit()">
+      <option value="value" {% if sort == "value" %}selected{% endif %}>Value</option>
+      <option value="name" {% if sort == "name" %}selected{% endif %}>Name</option>
+      <option value="set" {% if sort == "set" %}selected{% endif %}>Set</option>
+      <option value="added" {% if sort == "added" %}selected{% endif %}>Recently added</option>
+    </select>
+    <button type="submit" class="btn">Apply</button>
+    <span class="spacer"></span>
+    <span class="summary">{{ copies }} cards · <strong>{{ total|money }}</strong></span>
+  </form>
+
+  {% if rows %}
+    <p class="note">Change a quantity or what you paid, then press Save. Set a quantity to 0 to remove the card.</p>
+    <div class="table-wrap">
+      <table class="data cards-table">
+        <thead>
+          <tr>
+            <th>Card</th><th>Rarity</th><th>Finish</th>
+            <th class="num">Qty</th><th class="num">Paid each</th>
+            <th class="num">Price</th><th class="num">Value</th><th class="num">Gain</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+            <tr>
+              <td>
+                <a href="{{ r.card.scryfall_uri }}" target="_blank" rel="noopener">{{ r.card.name }}</a>
+                <div class="muted small">{{ r.card.set_name }} · {{ r.card.set_code|upper }} #{{ r.card.collector_number }}</div>
+              </td>
+              <td><span class="rarity rarity-{{ r.card.rarity }}">{{ r.card.rarity|capfirst }}</span></td>
+              <td>{{ r.item.get_finish_display }}</td>
+              <td class="num"><input class="qty" type="number" min="0" name="quantity" id="qty-{{ r.item.pk }}" value="{{ r.item.quantity }}" form="update-{{ r.item.pk }}" aria-label="Quantity of {{ r.card.name }}"></td>
+              <td class="num"><input class="paid" type="text" inputmode="decimal" name="purchase_price" id="paid-{{ r.item.pk }}" value="{{ r.item.purchase_price|default_if_none:'' }}" placeholder="—" form="update-{{ r.item.pk }}" aria-label="Price paid per copy of {{ r.card.name }}"></td>
+              <td class="num">{{ r.unit_price|money }}</td>
+              <td class="num strong">{{ r.total|money }}</td>
+              <td class="num {{ r.gain|tone }}">{% if r.gain is not None %}{{ r.gain|signed_money }}{% else %}<span class="muted">—</span>{% endif %}</td>
+              <td class="actions">
+                <form method="post" action="{% url 'collection:item_update' r.item.pk %}" id="update-{{ r.item.pk }}">
+                  {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+                  <button type="submit" class="btn small">Save</button>
+                </form>
+                <form method="post" action="{% url 'collection:item_delete' r.item.pk %}">
+                  {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+                  <button type="submit" class="btn small ghost">Remove</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% elif q %}
+    <p class="note">No cards in your collection match "{{ q }}".</p>
+  {% else %}
+    <div class="empty">
+      <h2>No cards yet</h2>
+      <p>Search Scryfall for a card, pick the printing you own, and it shows up here with its current price.</p>
+      <a class="btn primary" href="{% url 'collection:add' %}">Add cards</a>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}
