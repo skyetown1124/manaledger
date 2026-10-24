@@ -1,23 +1,39 @@
 {% extends "collection/base.html" %}
-{% load money %}
+{% load money cards %}
 {% block title %}My Cards · Mana Ledger{% endblock %}
 
 {% block content %}
 <section class="panel">
-  <form class="section-head filters" method="get">
-    <label for="card-filter">Find</label>
-    <input type="search" id="card-filter" name="q" value="{{ q }}" placeholder="Card name">
+  <form class="section-head filters" method="get" role="search">
+    <label for="card-filter">Search</label>
+    <input type="search" id="card-filter" name="q" value="{{ q }}" class="wide"
+           placeholder='e.g.  t:creature o:"draw a card" c:u mv<=3' aria-describedby="search-help">
     <label for="card-sort">Sort by</label>
     <select id="card-sort" name="sort" onchange="this.form.submit()">
       <option value="value" {% if sort == "value" %}selected{% endif %}>Value</option>
       <option value="name" {% if sort == "name" %}selected{% endif %}>Name</option>
+      <option value="mv" {% if sort == "mv" %}selected{% endif %}>Mana value</option>
       <option value="set" {% if sort == "set" %}selected{% endif %}>Set</option>
       <option value="added" {% if sort == "added" %}selected{% endif %}>Recently added</option>
     </select>
-    <button type="submit" class="btn">Apply</button>
+    <button type="submit" class="btn primary">Search</button>
+    {% if q %}<a class="btn ghost" href="{% url 'collection:cards' %}">Clear</a>{% endif %}
     <span class="spacer"></span>
     <span class="summary">{{ copies }} cards · <strong>{{ total|money }}</strong></span>
   </form>
+
+  {% include "collection/_search_help.html" %}
+
+  {% if search.descriptions %}
+    <div class="chips" aria-label="Active search">
+      <span class="muted">Showing cards where</span>
+      {% for d in search.descriptions %}<span class="chip">{{ d }}</span>{% endfor %}
+    </div>
+  {% endif %}
+  {% for e in search.errors %}<div class="message error">{{ e }}</div>{% endfor %}
+  {% if missing_text %}
+    <div class="message">{{ missing_text }} of your cards don't have their rules text yet, so text search can't find them. Press <strong>Refresh prices</strong> once to load it.</div>
+  {% endif %}
 
   {% if rows %}
     <p class="note">Change a quantity or what you paid, then press Save. Set a quantity to 0 to remove the card.</p>
@@ -33,9 +49,21 @@
         <tbody>
           {% for r in rows %}
             <tr>
-              <td>
-                <a href="{{ r.card.scryfall_uri }}" target="_blank" rel="noopener">{{ r.card.name }}</a>
-                <div class="muted small">{{ r.card.set_name }} · {{ r.card.set_code|upper }} #{{ r.card.collector_number }}</div>
+              <td class="card-cell">
+                <div class="card-name">
+                  <a href="{{ r.card.scryfall_uri }}" target="_blank" rel="noopener">{{ r.card.name }}</a>
+                  {{ r.card.mana_cost|mana }}
+                </div>
+                <div class="muted small">{% if r.card.type_line %}{{ r.card.type_line }} · {% endif %}{{ r.card.set_code|upper }} #{{ r.card.collector_number }}</div>
+                {% if r.card.oracle_text or r.decks %}
+                  <details class="card-text"{% if show_text %} open{% endif %}>
+                    <summary>Card text{% if r.decks %} · in {{ r.decks|length }} deck{{ r.decks|length|pluralize }}{% endif %}</summary>
+                    {% if r.card.oracle_text %}<p>{{ r.card.oracle_text|highlight:search.highlight }}</p>{% endif %}
+                    {% if r.card.power or r.card.toughness %}<p class="muted small">{{ r.card.power }}/{{ r.card.toughness }}</p>{% endif %}
+                    {% if r.card.loyalty %}<p class="muted small">Loyalty {{ r.card.loyalty }}</p>{% endif %}
+                    {% if r.decks %}<p class="muted small">In decks: {{ r.decks|join:", " }}</p>{% endif %}
+                  </details>
+                {% endif %}
               </td>
               <td><span class="rarity rarity-{{ r.card.rarity }}">{{ r.card.rarity|capfirst }}</span></td>
               <td>{{ r.item.get_finish_display }}</td>
@@ -60,7 +88,7 @@
       </table>
     </div>
   {% elif q %}
-    <p class="note">No cards in your collection match "{{ q }}".</p>
+    <p class="note">No cards in your collection match that search.</p>
   {% else %}
     <div class="empty">
       <h2>No cards yet</h2>

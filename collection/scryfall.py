@@ -79,6 +79,14 @@ def get_card(scryfall_id):
     return parse_card(data)
 
 
+def named(name):
+    """The default printing of a card, by exact name (used for basic lands)."""
+    data = _request("GET", "/cards/named", params={"exact": name})
+    if not data:
+        raise ScryfallError(f'Scryfall has no card named "{name}".')
+    return parse_card(data)
+
+
 def get_many(scryfall_ids):
     """Fetch many cards by id, 75 per request. Returns (cards, missing_ids)."""
     cards, missing = [], []
@@ -115,7 +123,27 @@ def parse_card(raw):
 
     released = raw.get("released_at")
     prices = raw.get("prices") or {}
+
+    def from_faces(key, joiner):
+        """Top-level value, or each face's value joined (double-faced and split cards)."""
+        if raw.get(key):
+            return raw[key]
+        parts = [f.get(key, "") for f in faces if f.get(key)]
+        return joiner.join(parts)
+
+    def first_face(key):
+        return raw.get(key) or next((f.get(key) for f in faces if f.get(key)), "") or ""
+
     return {
+        "mana_cost": from_faces("mana_cost", " // "),
+        "cmc": float(raw.get("cmc") or 0),
+        "oracle_text": from_faces("oracle_text", "\n//\n"),
+        "keywords": ", ".join(raw.get("keywords") or []),
+        "power": first_face("power"),
+        "toughness": first_face("toughness"),
+        "loyalty": first_face("loyalty"),
+        "color_identity": "".join(c for c in "WUBRG" if c in (raw.get("color_identity") or [])),
+        "legalities": raw.get("legalities") or {},
         "scryfall_id": raw["id"],
         "name": raw.get("name", ""),
         "set_code": raw.get("set", ""),

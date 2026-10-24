@@ -2,6 +2,7 @@
 from decimal import Decimal
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from . import scryfall
@@ -11,6 +12,8 @@ CARD_FIELDS = [
     "name", "set_code", "set_name", "collector_number", "rarity", "colors",
     "type_line", "released_at", "image_url", "scryfall_uri",
     "usd", "usd_foil", "usd_etched",
+    "mana_cost", "cmc", "oracle_text", "keywords", "power", "toughness",
+    "loyalty", "color_identity", "legalities",
 ]
 
 
@@ -18,6 +21,7 @@ def save_card(data):
     """Create or update a Card from parsed Scryfall data, and log today's price."""
     defaults = {f: data[f] for f in CARD_FIELDS}
     defaults["prices_updated"] = timezone.now()
+    defaults["details_loaded"] = True
     card, _ = Card.objects.update_or_create(scryfall_id=data["scryfall_id"], defaults=defaults)
     record_price(card)
     return card
@@ -59,9 +63,18 @@ def add_to_collection(scryfall_id, finish, quantity, purchase_price=None):
     return item, created
 
 
+def basic_land(name):
+    """A Card for a basic land: a printing already saved, or Scryfall's default one."""
+    card = Card.objects.filter(name=name, type_line__contains="Basic").order_by("-released_at").first()
+    return card or save_card(scryfall.named(name))
+
+
 def refresh_prices():
-    """Pull current prices for every card you own. Returns a short summary dict."""
-    ids = list(Card.objects.filter(items__isnull=False).distinct().values_list("scryfall_id", flat=True))
+    """Pull current prices and card text for every card you own or use in a deck."""
+    ids = list(
+        Card.objects.filter(Q(items__isnull=False) | Q(deck_entries__isnull=False))
+        .distinct().values_list("scryfall_id", flat=True)
+    )
     if not ids:
         return {"updated": 0, "missing": [], "total": Decimal("0")}
     fresh, missing = scryfall.get_many(ids)

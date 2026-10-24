@@ -1,13 +1,27 @@
 from django.contrib import admin
 
-from .models import Card, CollectionItem, CollectionSnapshot, PriceSnapshot
+from .models import Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, PriceSnapshot
 
 
 @admin.register(Card)
 class CardAdmin(admin.ModelAdmin):
-    list_display = ("name", "set_code", "collector_number", "rarity", "usd", "usd_foil", "prices_updated")
-    search_fields = ("name", "set_name", "set_code")
-    list_filter = ("rarity", "set_code")
+    list_display = ("name", "set_code", "collector_number", "rarity", "mana_cost", "usd", "usd_foil", "prices_updated")
+    search_fields = ("name", "set_name", "set_code", "type_line", "oracle_text")
+    list_filter = ("rarity", "set_code", "details_loaded")
+
+
+class DeckCardInline(admin.TabularInline):
+    model = DeckCard
+    extra = 0
+    autocomplete_fields = ("card",)
+
+
+@admin.register(Deck)
+class DeckAdmin(admin.ModelAdmin):
+    list_display = ("name", "format", "updated_at")
+    list_filter = ("format",)
+    search_fields = ("name",)
+    inlines = [DeckCardInline]
 
 
 @admin.register(CollectionItem)

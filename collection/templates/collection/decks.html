@@ -1,0 +1,54 @@
+{% extends "collection/base.html" %}
+{% load money cards %}
+{% block title %}Decks · Mana Ledger{% endblock %}
+{% block heading %}My Decks{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <form class="section-head filters" method="post" action="{% url 'collection:deck_create' %}">
+    {% csrf_token %}
+    <label for="new-deck-name">New deck</label>
+    <input type="text" id="new-deck-name" name="name" placeholder="Deck name" maxlength="100" required class="wide-text">
+    <label for="new-deck-format">Format</label>
+    <select id="new-deck-format" name="format">
+      {% for value, label in formats %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+    </select>
+    <button type="submit" class="btn primary">Create deck</button>
+  </form>
+  <p class="note">Decks are built from cards in your library, so a deck can only use as many copies as you own. Basic lands are the exception: add as many as you need. One card can be in several decks.</p>
+  {% if not library_size %}
+    <div class="message">Your library is empty. <a href="{% url 'collection:add' %}">Add some cards</a> first, then build a deck from them.</div>
+  {% endif %}
+</section>
+
+{% if summaries %}
+  <section class="deck-grid">
+    {% for s in summaries %}
+      <a class="deck-tile {% if s.stats.issues %}needs-work{% else %}ready{% endif %}" href="{% url 'collection:deck' s.deck.pk %}">
+        <div class="deck-tile-top">
+          <span class="kpi-label">{{ s.deck.get_format_display }}</span>
+          <span class="pips">{{ s.stats.identity|pips }}</span>
+        </div>
+        <div class="deck-tile-name">{{ s.deck.name }}</div>
+        <div class="deck-tile-stats">
+          <span><strong>{{ s.stats.deck_count }}</strong>{% if s.stats.target %} / {{ s.stats.target }}{% endif %} cards</span>
+          <span><strong>{{ s.stats.value|money }}</strong></span>
+        </div>
+        <div class="deck-tile-status">
+          {% if s.stats.issues %}
+            <span class="status warn">{{ s.stats.issues }} thing{{ s.stats.issues|pluralize }} to fix</span>
+          {% else %}
+            <span class="status good">Ready to play</span>
+          {% endif %}
+          <span class="muted small">Updated {{ s.deck.updated_at|date:"M j" }}</span>
+        </div>
+      </a>
+    {% endfor %}
+  </section>
+{% else %}
+  <section class="panel empty">
+    <h2>No decks yet</h2>
+    <p>Name a deck and pick a format above. You'll then search your library and add cards to it, with the format's rules checked as you go.</p>
+  </section>
+{% endif %}
+{% endblock %}

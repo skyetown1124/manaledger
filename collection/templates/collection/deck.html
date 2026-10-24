@@ -1,0 +1,232 @@
+{% extends "collection/base.html" %}
+{% load static money cards %}
+{% block title %}{{ deck.name }} · Mana Ledger{% endblock %}
+{% block heading %}{{ deck.name }} <span class="titlebar-sub">{{ deck.get_format_display }}</span>{% endblock %}
+
+{% block content %}
+<section class="kpis">
+  <div class="kpi kpi-blue">
+    <div class="kpi-label">Cards</div>
+    <div class="kpi-value">{{ stats.deck_count }}{% if stats.target %}<span class="kpi-of"> / {{ stats.target }}</span>{% endif %}</div>
+    <div class="kpi-sub">{{ stats.land_count }} lands{% if stats.side_count %} · {{ stats.side_count }} in sideboard{% endif %}</div>
+  </div>
+  <div class="kpi kpi-gold">
+    <div class="kpi-label">Deck value</div>
+    <div class="kpi-value">{{ stats.value|money }}</div>
+    <div class="kpi-sub">Market price of every card in the deck</div>
+  </div>
+  <div class="kpi kpi-green">
+    <div class="kpi-label">Average mana value</div>
+    <div class="kpi-value">{{ stats.avg_mv }}</div>
+    <div class="kpi-sub">Of non-land cards · colors {{ stats.identity|pips }}</div>
+  </div>
+  <div class="kpi {% if stats.issues %}kpi-warn{% else %}kpi-good{% endif %}">
+    <div class="kpi-label">Deck check</div>
+    <div class="kpi-value">{% if stats.issues %}{{ stats.issues }} to fix{% else %}Ready{% endif %}</div>
+    <div class="kpi-sub">{% if stats.issues %}See the checklist below{% else %}Every rule checked passes{% endif %}</div>
+  </div>
+</section>
+
+<section class="deck-layout">
+  <!-- Deck list -->
+  <div class="panel">
+    <div class="section-head"><span>Deck list</span><span class="spacer"></span><span class="summary">{{ stats.deck_count }} cards · {{ stats.value|money }}</span></div>
+    {% if stats.groups %}
+      {% for group in stats.groups %}
+        <h4 class="group-title">{{ group.label }} <span class="muted">({{ group.count }})</span></h4>
+        <div class="table-wrap">
+          <table class="data deck-table">
+            <tbody>
+              {% for e in group.entries %}
+                <tr class="{% if not e.is_basic and e.owned < e.quantity %}short{% endif %}">
+                  <td class="qty-cell">
+                    <input class="qty" type="number" min="0" name="quantity" id="entry-qty-{{ e.id }}" value="{{ e.quantity }}" form="entry-{{ e.id }}" aria-label="Copies of {{ e.name }}">
+                  </td>
+                  <td class="card-cell">
+                    <div class="card-name">
+                      <a href="{{ e.scryfall_uri }}" target="_blank" rel="noopener">{{ e.name }}</a>
+                      {{ e.mana_cost|mana }}
+                    </div>
+                    <div class="muted small">
+                      {% if e.is_basic %}Basic land{% else %}You own {{ e.owned }}{% endif %}{% if e.elsewhere %} · also in {{ e.elsewhere|join:", " }}{% endif %}
+                    </div>
+                  </td>
+                  <td>
+                    <label class="sr" for="entry-board-{{ e.id }}">Section for {{ e.name }}</label>
+                    <select name="board" id="entry-board-{{ e.id }}" form="entry-{{ e.id }}" class="compact">
+                      {% for value, label in boards %}<option value="{{ value }}" {% if value == e.board %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                    </select>
+                  </td>
+                  <td class="num">{{ e.price|money }}</td>
+                  <td class="actions">
+                    <form method="post" action="{% url 'collection:deck_entry_update' e.id %}" id="entry-{{ e.id }}">
+                      {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+                      <button type="submit" class="btn small">Save</button>
+                    </form>
+                    <form method="post" action="{% url 'collection:deck_entry_update' e.id %}">
+                      {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+                      <input type="hidden" name="quantity" value="0">
+                      <button type="submit" class="btn small ghost" aria-label="Remove {{ e.name }}">Remove</button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty compact">
+        <h2>This deck is empty</h2>
+        <p>{% if deck.format == "commander" %}Start with your commander: search <code>is:commander</code> on the right and add one to the Commander section.{% else %}Search your library on the right and add cards.{% endif %}</p>
+      </div>
+    {% endif %}
+
+    <form class="basics" method="post" action="{% url 'collection:deck_add_basics' deck.pk %}">
+      {% csrf_token %}
+      <h4 class="group-title">Add basic lands</h4>
+      <div class="basics-row">
+        {% for land in basic_lands %}
+          <label for="basic-{{ land|lower }}">{{ land }}
+            <input type="number" min="0" max="99" id="basic-{{ land|lower }}" name="{{ land|lower }}" value="0" class="qty">
+          </label>
+        {% endfor %}
+        <button type="submit" class="btn">Add lands</button>
+      </div>
+      <p class="note">Basic lands don't need to be in your library. The first time you add one, its card details come from Scryfall.</p>
+    </form>
+  </div>
+
+  <!-- Library search -->
+  <div class="panel">
+    <div class="section-head"><span>Add from your library</span></div>
+    <form class="search-row" method="get" role="search">
+      <label class="sr" for="lib-q">Search your library</label>
+      <input type="search" id="lib-q" name="q" value="{{ q }}" placeholder='e.g. o:"draw a card" mv<=3'>
+      <button type="submit" class="btn primary">Search</button>
+      {% if can_fit %}
+        {# The hidden 0 comes first so a ticked box (sent after it) wins. #}
+        <input type="hidden" name="fit" value="0">
+        <label class="check" for="lib-fit">
+          <input type="checkbox" id="lib-fit" name="fit" value="1" {% if fit %}checked{% endif %} onchange="this.form.submit()">
+          Only cards that fit {{ commander_colors|pips }}
+        </label>
+      {% endif %}
+    </form>
+    {% include "collection/_search_help.html" %}
+    {% if search.descriptions or fit %}
+      <div class="chips">
+        {% for d in search.descriptions %}<span class="chip">{{ d }}</span>{% endfor %}
+        {% if fit %}<span class="chip">fits your commander's colors</span>{% endif %}
+      </div>
+    {% endif %}
+    {% for err in search.errors %}<div class="message error">{{ err }}</div>{% endfor %}
+
+    <p class="note">{{ matches }} card{{ matches|pluralize }} in your library match{{ matches|pluralize:"es," }}{% if matches > results|length %}; showing the first {{ results|length }}. Search to narrow it down{% endif %}.</p>
+    <ul class="library-list">
+      {% for r in results %}
+        <li class="{% if not r.free and not r.card.is_basic_land %}used-up{% endif %}">
+          <div class="lib-card">
+            <div class="card-name">
+              <a href="{{ r.card.scryfall_uri }}" target="_blank" rel="noopener">{{ r.card.name }}</a>
+              {{ r.card.mana_cost|mana }}
+            </div>
+            <div class="muted small">{{ r.card.type_line }} · {{ r.card.set_code|upper }}</div>
+            {% if search.highlight and r.card.oracle_text %}
+              <p class="lib-text">{{ r.card.oracle_text|highlight:search.highlight }}</p>
+            {% endif %}
+          </div>
+          <div class="lib-add">
+            {% if r.free or r.card.is_basic_land %}
+              <span class="small {% if r.used %}muted{% endif %}">{{ r.free }} of {{ r.owned }} free</span>
+              <form method="post" action="{% url 'collection:deck_add' deck.pk %}">
+                {% csrf_token %}
+                <input type="hidden" name="card_id" value="{{ r.card.pk }}">
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <label class="sr" for="add-qty-{{ r.card.pk }}">Copies</label>
+                <input type="number" name="quantity" id="add-qty-{{ r.card.pk }}" value="1" min="1" {% if not r.card.is_basic_land %}max="{{ r.free }}"{% endif %} class="qty">
+                <label class="sr" for="add-board-{{ r.card.pk }}">Section</label>
+                <select name="board" id="add-board-{{ r.card.pk }}" class="compact">
+                  {% for value, label in boards %}<option value="{{ value }}" {% if value == default_board %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+                <button type="submit" class="btn primary small">Add</button>
+              </form>
+            {% else %}
+              <span class="small muted">All {{ r.owned }} in this deck</span>
+            {% endif %}
+          </div>
+        </li>
+      {% empty %}
+        <li class="muted">No cards in your library match. {% if fit %}Try unticking the color filter.{% endif %}</li>
+      {% endfor %}
+    </ul>
+  </div>
+</section>
+
+<section class="grid-2">
+  <div class="panel">
+    <h3>Deck checklist</h3>
+    <ul class="checks">
+      {% for c in stats.checks %}
+        <li class="{% if c.ok %}ok{% else %}bad{% endif %}">
+          <span class="check-mark" aria-hidden="true">{% if c.ok %}✓{% else %}!{% endif %}</span>
+          <div><strong>{{ c.label }}</strong>{% if c.detail %}<div class="small muted">{{ c.detail }}</div>{% endif %}</div>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+  <div class="panel">
+    <h3>Mana curve</h3>
+    <div class="chart" style="height:220px"><canvas id="chart-curve" aria-label="Mana curve: non-land cards by mana value"></canvas></div>
+    <p class="note">Non-land cards in the main deck and command zone, by mana value.</p>
+    {% if stats.symbols %}
+      <h4 class="group-title">Colored mana symbols in costs</h4>
+      <div class="symbol-bars">
+        {% for s in stats.symbols %}
+          <div class="symbol-bar"><span class="ms ms-{{ s.color }}">{{ s.color }}</span><span class="bar-track"><span class="bar bar-{{ s.color }}" style="width: {{ s.pct }}%"></span></span><span class="small">{{ s.count }}</span></div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+</section>
+
+<section class="grid-2">
+  <div class="panel">
+    <h3>Export deck list</h3>
+    <p class="note">Plain text that MTG Arena, Moxfield and Archidekt can import.</p>
+    <label class="sr" for="export-text">Deck list text</label>
+    <textarea id="export-text" class="export" rows="10" readonly>{{ stats.export }}</textarea>
+    <div class="row-actions">
+      <button type="button" class="btn" id="copy-export">Copy deck list</button>
+      <span class="small muted" id="copy-status" role="status"></span>
+    </div>
+  </div>
+  <div class="panel">
+    <h3>Deck settings</h3>
+    <form method="post" action="{% url 'collection:deck_update' deck.pk %}" class="stack">
+      {% csrf_token %}
+      <label for="deck-name">Name</label>
+      <input type="text" id="deck-name" name="name" value="{{ deck.name }}" maxlength="100" required>
+      <label for="deck-format">Format</label>
+      <select id="deck-format" name="format">
+        {% for value, label in formats %}<option value="{{ value }}" {% if value == deck.format %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+      <label for="deck-notes">Notes</label>
+      <textarea id="deck-notes" name="description" rows="3" placeholder="Strategy, upgrades to buy, who it's for">{{ deck.description }}</textarea>
+      <div><button type="submit" class="btn primary">Save settings</button></div>
+    </form>
+    <form method="post" action="{% url 'collection:deck_delete' deck.pk %}" class="danger-zone">
+      {% csrf_token %}
+      <label class="check" for="confirm-delete"><input type="checkbox" id="confirm-delete" name="confirm" value="yes" required> Delete this deck (your cards stay in your library)</label>
+      <button type="submit" class="btn ghost">Delete deck</button>
+    </form>
+  </div>
+</section>
+
+{{ chart_data|json_script:"deck-data" }}
+{% endblock %}
+
+{% block scripts %}
+  <script src="{% static 'collection/vendor/chart.umd.min.js' %}"></script>
+  <script src="{% static 'collection/deck.js' %}"></script>
+{% endblock %}
