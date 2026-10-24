@@ -40,7 +40,7 @@
               {% for e in group.entries %}
                 <tr class="{% if not e.is_basic and e.owned < e.quantity %}short{% endif %}">
                   <td class="qty-cell">
-                    <input class="qty" type="number" min="0" name="quantity" id="entry-qty-{{ e.id }}" value="{{ e.quantity }}" form="entry-{{ e.id }}" aria-label="Copies of {{ e.name }}">
+                    <input class="qty" type="number" min="0" {% if e.singleton %}max="1" title="One copy allowed in Commander"{% endif %} name="quantity" id="entry-qty-{{ e.id }}" value="{{ e.quantity }}" form="entry-{{ e.id }}" aria-label="Copies of {{ e.name }}">
                   </td>
                   <td class="card-cell">
                     <div class="card-name">
@@ -125,7 +125,7 @@
     <p class="note">{{ matches }} card{{ matches|pluralize }} in your library match{{ matches|pluralize:"es," }}{% if matches > results|length %}; showing the first {{ results|length }}. Search to narrow it down{% endif %}.</p>
     <ul class="library-list">
       {% for r in results %}
-        <li class="{% if not r.free and not r.card.is_basic_land %}used-up{% endif %}">
+        <li class="{% if r.blocked or not r.free and not r.card.is_basic_land %}used-up{% endif %}">
           <div class="lib-card">
             <div class="card-name">
               <a href="{{ r.card.scryfall_uri }}" target="_blank" rel="noopener">{{ r.card.name }}</a>
@@ -137,14 +137,20 @@
             {% endif %}
           </div>
           <div class="lib-add">
-            {% if r.free or r.card.is_basic_land %}
-              <span class="small {% if r.used %}muted{% endif %}">{{ r.free }} of {{ r.owned }} free</span>
+            {% if r.blocked %}
+              <span class="small muted">In deck · one copy allowed</span>
+            {% elif r.free or r.card.is_basic_land %}
+              <span class="small {% if r.used %}muted{% endif %}">{% if r.singleton %}Singleton · {% endif %}{{ r.free }} of {{ r.owned }} free</span>
               <form method="post" action="{% url 'collection:deck_add' deck.pk %}">
                 {% csrf_token %}
                 <input type="hidden" name="card_id" value="{{ r.card.pk }}">
                 <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                <label class="sr" for="add-qty-{{ r.card.pk }}">Copies</label>
-                <input type="number" name="quantity" id="add-qty-{{ r.card.pk }}" value="1" min="1" {% if not r.card.is_basic_land %}max="{{ r.free }}"{% endif %} class="qty">
+                {% if r.singleton %}
+                  <input type="hidden" name="quantity" value="1">
+                {% else %}
+                  <label class="sr" for="add-qty-{{ r.card.pk }}">Copies</label>
+                  <input type="number" name="quantity" id="add-qty-{{ r.card.pk }}" value="1" min="1" {% if not r.card.is_basic_land %}max="{{ r.free }}"{% endif %} class="qty">
+                {% endif %}
                 <label class="sr" for="add-board-{{ r.card.pk }}">Section</label>
                 <select name="board" id="add-board-{{ r.card.pk }}" class="compact">
                   {% for value, label in boards %}<option value="{{ value }}" {% if value == default_board %}selected{% endif %}>{{ label }}</option>{% endfor %}
@@ -165,6 +171,67 @@
 
 <section class="grid-2">
   <div class="panel">
+    {% with c=stats.composition %}
+    <h3>Deck composition</h3>
+    <div class="comp-summary">
+      <div><span class="kpi-label">Spells</span><strong>{{ c.spells }}</strong></div>
+      <div><span class="kpi-label">Lands</span><strong>{{ c.lands }}</strong></div>
+      <div><span class="kpi-label">Total</span><strong>{{ stats.deck_count }}</strong></div>
+      <div><span class="kpi-label">Avg CMC (spells)</span><strong>{{ c.avg_cmc }}</strong></div>
+    </div>
+    {% if c.rows %}
+      <div class="table-wrap">
+        <table class="data comp-table">
+          <thead><tr><th>Card type</th><th class="num">Cards</th><th class="num">% of deck</th><th class="num">Avg CMC</th><th class="bar-col"><span class="sr">Share of deck</span></th></tr></thead>
+          <tbody>
+            {% for r in c.rows %}
+              <tr>
+                <td><span class="type-dot type-{{ r.key }}" aria-hidden="true"></span>{{ r.label }}</td>
+                <td class="num">{{ r.count }}</td>
+                <td class="num">{{ r.pct }}%</td>
+                <td class="num">{% if r.avg_cmc is None %}<span class="muted">—</span>{% else %}{{ r.avg_cmc }}{% endif %}</td>
+                <td class="bar-col"><span class="bar-track"><span class="bar type-{{ r.key }}" style="width: {{ r.bar }}%"></span></span></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% if c.grid %}
+        <h4 class="group-title">Spells by type and CMC</h4>
+        <div class="table-wrap">
+          <table class="heatmap cmc-grid">
+            <thead>
+              <tr><th scope="col">Type</th>{% for label in c.cmc_labels %}<th scope="col">{{ label }}</th>{% endfor %}<th scope="col">Total</th></tr>
+            </thead>
+            <tbody>
+              {% for row in c.grid %}
+                <tr>
+                  <th scope="row"><span class="type-dot type-{{ row.key }}" aria-hidden="true"></span>{{ row.label }}</th>
+                  {% for cell in row.cells %}
+                    <td style="--v: {{ cell.level }}" class="{% if cell.count %}{% if cell.level > 0.55 %}hot{% endif %}{% else %}none{% endif %}">{% if cell.count %}{{ cell.count }}{% endif %}</td>
+                  {% endfor %}
+                  <td class="total">{{ row.total }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot>
+              <tr><th scope="row">All spells</th>{% for n in c.grid_totals %}<td class="total">{{ n }}</td>{% endfor %}<td class="total">{{ c.spells }}</td></tr>
+            </tfoot>
+          </table>
+        </div>
+        <p class="note">CMC is converted mana cost (mana value): the total mana in a card's cost, so {2}{B}{B} is 4. The stronger a square's color, the more cards it holds.</p>
+      {% endif %}
+      <p class="note">
+        {% if deck.format == "commander" %}Includes your commander. {% endif %}Each card counts once, under its main type: creature before artifact or enchantment, and land before anything else.{% if c.multi %}
+        Cards with more than one type: {% for m in c.multi %}{{ m.label }} ({{ m.count }}){% if not forloop.last %}, {% endif %}{% endfor %}.{% endif %}
+      </p>
+    {% else %}
+      <p class="note">Add cards and the split by type appears here.</p>
+    {% endif %}
+    {% endwith %}
+  </div>
+  <div class="panel">
     <h3>Deck checklist</h3>
     <ul class="checks">
       {% for c in stats.checks %}
@@ -175,6 +242,9 @@
       {% endfor %}
     </ul>
   </div>
+</section>
+
+<section class="grid-2">
   <div class="panel">
     <h3>Mana curve</h3>
     <div class="chart" style="height:220px"><canvas id="chart-curve" aria-label="Mana curve: non-land cards by mana value"></canvas></div>
@@ -188,9 +258,6 @@
       </div>
     {% endif %}
   </div>
-</section>
-
-<section class="grid-2">
   <div class="panel">
     <h3>Export deck list</h3>
     <p class="note">Plain text that MTG Arena, Moxfield and Archidekt can import.</p>
@@ -201,6 +268,9 @@
       <span class="small muted" id="copy-status" role="status"></span>
     </div>
   </div>
+</section>
+
+<section>
   <div class="panel">
     <h3>Deck settings</h3>
     <form method="post" action="{% url 'collection:deck_update' deck.pk %}" class="stack">

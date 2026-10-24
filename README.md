@@ -60,6 +60,14 @@ Open http://127.0.0.1:8000/ and use **Add Cards** to search for your first card.
   - the deck's value, average mana value, mana curve and colored mana symbols,
   - a plain-text deck list you can copy into MTG Arena, Moxfield or Archidekt.
 
+  - a composition breakdown: how many creatures, instants, sorceries,
+    artifacts, enchantments, planeswalkers, battles and lands, each as a share
+    of the deck with its average CMC, plus a grid of spells by type and CMC.
+
+  Commander decks are singleton: the deck builder won't add a second copy of
+  any card (any printing, any section). Basic lands, and cards that say "A deck
+  can have any number of cards named ...", are exempt.
+
   For Commander decks, add your commander first. The library search then shows
   only cards that fit your commander's colors (untick the box to see all).
 - **Dashboard**: total value, value by day with a trend line, value by set,

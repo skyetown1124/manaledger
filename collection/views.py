@@ -293,6 +293,14 @@ def _boards(deck):
     return [(k, label) for k, label in DeckCard.BOARD_CHOICES if k in wanted or k in used]
 
 
+SINGLETON_RULE = "Commander decks allow one copy of each card, except basic lands."
+
+
+def _singleton_applies(deck, card):
+    """True when this deck's format allows only one copy of this card."""
+    return deckrules.enforces_singleton(deck.format) and not deckrules.copy_limit_exempt(card.type_line, card.oracle_text)
+
+
 def _board_from(deck, value):
     allowed = [k for k, _ in _boards(deck)]
     return value if value in allowed else "main"
@@ -310,6 +318,7 @@ def _deck_entries(deck, owned):
             "legalities": c.legalities or {}, "details_loaded": c.details_loaded,
             "price": _f(c.best_price), "owned": owned.get(c.id, 0), "is_basic": c.is_basic_land,
             "scryfall_uri": c.scryfall_uri, "image_url": c.image_url,
+            "singleton": _singleton_applies(deck, c),
         })
     return rows
 
@@ -372,11 +381,17 @@ def deck_detail(request, pk):
     for e in entries:
         in_deck[e["card_id"]] = in_deck.get(e["card_id"], 0) + e["quantity"]
     matches = library.count()
+    names_in_deck = {e["name"] for e in entries}
     results = []
     for card in library.order_by("name", "set_code")[:60]:
         have = owned.get(card.id, 0)
         used = in_deck.get(card.id, 0)
-        results.append({"card": card, "owned": have, "used": used, "free": max(0, have - used)})
+        singleton = _singleton_applies(deck, card)
+        results.append({
+            "card": card, "owned": have, "used": used, "free": max(0, have - used),
+            "singleton": singleton,
+            "blocked": singleton and card.name in names_in_deck,  # Commander: already has a copy
+        })
 
     boards = _boards(deck)
     return render(request, "collection/deck.html", {
@@ -398,6 +413,16 @@ def deck_add(request, pk):
     back = reverse("collection:deck", args=[deck.pk])
 
     note = ""
+    if _singleton_applies(deck, card):
+        # Commander: one copy per card name, counting every printing and section.
+        existing = DeckCard.objects.filter(deck=deck, card__name=card.name).first()
+        if existing:
+            messages.error(request, f"{card.name} is already in this deck ({existing.get_board_display().lower()}). "
+                                    f"{SINGLETON_RULE}")
+            return _back(request, back)
+        if qty > 1:
+            qty, note = 1, f" {SINGLETON_RULE}"
+
     if not card.is_basic_land:
         owned = _sum_quantity(CollectionItem.objects.filter(card=card))
         free = owned - _sum_quantity(DeckCard.objects.filter(deck=deck, card=card))
@@ -434,6 +459,10 @@ def deck_entry_update(request, pk):
         return _back(request, back)
 
     note = ""
+    singleton = _singleton_applies(deck, card)
+    if singleton and qty > 1:
+        qty, note = 1, f" {SINGLETON_RULE}"
+
     if not card.is_basic_land:
         owned = _sum_quantity(CollectionItem.objects.filter(card=card))
         others = _sum_quantity(DeckCard.objects.filter(deck=deck, card=card).exclude(pk=entry.pk))
@@ -448,7 +477,7 @@ def deck_entry_update(request, pk):
     with transaction.atomic():
         target = DeckCard.objects.filter(deck=deck, card=card, board=board).exclude(pk=entry.pk).first()
         if target:  # moving onto a section that already has this card: merge them
-            target.quantity += qty
+            target.quantity = 1 if singleton else target.quantity + qty
             target.save()
             entry.delete()
         else:

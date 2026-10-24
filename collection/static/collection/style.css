@@ -349,7 +349,7 @@ label.check input { accent-color: var(--accent); }
 .checks .bad .check-mark { background: color-mix(in srgb, var(--gold) 25%, transparent); color: var(--gold); }
 .symbol-bars { display: flex; flex-direction: column; gap: 6px; max-width: 420px; }
 .symbol-bar { display: grid; grid-template-columns: 20px 1fr 32px; align-items: center; gap: 8px; }
-.bar-track { height: 10px; background: var(--panel-2); border-radius: 5px; overflow: hidden; }
+.bar-track { display: block; height: 10px; background: var(--panel-2); border-radius: 5px; overflow: hidden; }
 .bar { display: block; height: 100%; border-radius: 5px; background: var(--mana-C); }
 .bar-W { background: var(--mana-W); } .bar-U { background: var(--mana-U); } .bar-B { background: var(--mana-B); }
 .bar-R { background: var(--mana-R); } .bar-G { background: var(--mana-G); }
@@ -360,6 +360,28 @@ textarea.export { font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas
 .stack label { font-size: 12px; font-weight: 700; margin-top: 4px; }
 .danger-zone { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
 .empty.compact { padding: 28px 12px; }
+
+/* ---------- Deck composition ---------- */
+:root {
+  --type-creature: #1fb57b; --type-instant: #2f7ed8; --type-sorcery: #e5484d; --type-artifact: #a5b4c7;
+  --type-enchantment: #8b5cf6; --type-planeswalker: #f0a500; --type-battle: #f26b38; --type-land: #b08d57;
+  --type-other: #7d8590;
+}
+.comp-summary { display: flex; flex-wrap: wrap; gap: 28px; margin-bottom: 12px; }
+.comp-summary div { display: flex; flex-direction: column; gap: 2px; }
+.comp-summary strong { font-size: 22px; font-variant-numeric: tabular-nums; }
+.comp-table td, .comp-table th { padding: 6px 8px; }
+.comp-table .bar-col { width: 34%; }
+table.heatmap.cmc-grid td { height: 32px; min-width: 34px; }
+table.heatmap.cmc-grid tbody th { text-align: left; color: var(--text); }
+table.heatmap.cmc-grid td.total { background: none; color: var(--muted); font-weight: 600; }
+table.heatmap.cmc-grid tfoot th { text-align: left; color: var(--muted); }
+.type-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 8px; vertical-align: baseline; }
+.type-creature { background: var(--type-creature); } .type-instant { background: var(--type-instant); }
+.type-sorcery { background: var(--type-sorcery); } .type-artifact { background: var(--type-artifact); }
+.type-enchantment { background: var(--type-enchantment); } .type-planeswalker { background: var(--type-planeswalker); }
+.type-battle { background: var(--type-battle); } .type-land { background: var(--type-land); }
+.type-other { background: var(--type-other); }
 
 /* ---------- Import ---------- */
 .import-form { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }

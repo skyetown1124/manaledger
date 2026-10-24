@@ -383,3 +383,106 @@ class ImportViewTests(TestCase):
             self.assertEqual(CollectionItem.objects.count(), 0)
             call_command("import_cards", str(path), stdout=StringIO())
             self.assertEqual(sum(CollectionItem.objects.values_list("quantity", flat=True)), 6)
+
+
+# ------------------------------------------------------------------ Commander singleton
+
+class CommanderSingletonTests(TestCase):
+    def setUp(self):
+        self.ring_a = make_card("Sol Ring", scryfall_id="ring-a", set_code="cmm")
+        self.ring_b = make_card("Sol Ring", scryfall_id="ring-b", set_code="c21")
+        self.rats = make_card("Relentless Rats", colors="B", color_identity="B", type_line="Creature — Rat",
+                              oracle_text="A deck can have any number of cards named Relentless Rats.")
+        self.swamp = make_card("Swamp", type_line="Basic Land — Swamp")
+        CollectionItem.objects.create(card=self.ring_a, quantity=2)
+        CollectionItem.objects.create(card=self.ring_b, quantity=1)
+        CollectionItem.objects.create(card=self.rats, quantity=5)
+        self.deck = Deck.objects.create(name="EDH", format="commander")
+
+    def add(self, card, qty, deck=None):
+        deck = deck or self.deck
+        return self.client.post(reverse("collection:deck_add", args=[deck.pk]),
+                                {"card_id": card.pk, "quantity": qty, "board": "main"}, follow=True)
+
+    def count(self, name, deck=None):
+        return sum(DeckCard.objects.filter(deck=deck or self.deck, card__name=name).values_list("quantity", flat=True))
+
+    def test_only_one_copy_per_name(self):
+        self.add(self.ring_a, 3)
+        self.assertEqual(self.count("Sol Ring"), 1)
+        page = self.add(self.ring_a, 1)
+        self.assertContains(page, "Sol Ring is already in this deck")
+        self.add(self.ring_b, 1)  # a different printing of the same card
+        self.assertEqual(self.count("Sol Ring"), 1)
+
+    def test_basics_and_any_number_cards_are_exempt(self):
+        self.add(self.swamp, 30)
+        self.add(self.rats, 5)
+        self.assertEqual(self.count("Swamp"), 30)
+        self.assertEqual(self.count("Relentless Rats"), 5)
+
+    def test_editing_quantity_is_capped(self):
+        self.add(self.ring_a, 1)
+        entry = DeckCard.objects.get(deck=self.deck, card=self.ring_a)
+        self.client.post(reverse("collection:deck_entry_update", args=[entry.pk]), {"quantity": 2, "board": "main"})
+        entry.refresh_from_db()
+        self.assertEqual(entry.quantity, 1)
+
+    def test_other_formats_still_allow_multiples(self):
+        modern = Deck.objects.create(name="Modern", format="modern")
+        self.add(self.ring_a, 2, deck=modern)
+        self.assertEqual(self.count("Sol Ring", deck=modern), 2)
+
+    def test_library_panel_shows_card_is_in_deck(self):
+        self.add(self.ring_a, 1)
+        page = self.client.get(reverse("collection:deck", args=[self.deck.pk]))
+        self.assertContains(page, "In deck · one copy allowed", count=2)  # both Sol Ring printings
+
+
+class CompositionTests(TestCase):
+    def entry(self, type_line, qty=1, cmc=0):
+        return {"type_line": type_line, "quantity": qty, "cmc": cmc}
+
+    def test_cmc_by_type(self):
+        playing = [
+            self.entry("Creature — Elf", 2, cmc=1),
+            self.entry("Creature — Dragon", 1, cmc=6),
+            self.entry("Instant", 1, cmc=2),
+            self.entry("Sorcery", 1, cmc=9),       # lands in the 7+ column
+            self.entry("Basic Land — Forest", 10),
+        ]
+        c = decks.composition(playing, 15)
+        by_label = {r["label"]: r for r in c["rows"]}
+        self.assertEqual(by_label["Creatures"]["avg_cmc"], 2.67)   # (1+1+6) / 3
+        self.assertIsNone(by_label["Lands"]["avg_cmc"])
+        self.assertEqual(c["avg_cmc"], 3.8)                        # (1+1+6+2+9) / 5 spells
+        self.assertEqual([g["label"] for g in c["grid"]], ["Creatures", "Instants", "Sorceries"])
+        self.assertEqual([cell["count"] for cell in c["grid"][0]["cells"]], [0, 2, 0, 0, 0, 0, 1, 0])
+        self.assertEqual(c["grid_totals"], [0, 2, 1, 0, 0, 0, 1, 1])
+
+    def test_split_by_main_type(self):
+        playing = [
+            self.entry("Legendary Creature — Phyrexian Praetor"),
+            self.entry("Artifact Creature — Golem", 2),
+            self.entry("Instant", 3),
+            self.entry("Sorcery", 2),
+            self.entry("Artifact"),
+            self.entry("Enchantment Creature — God"),
+            self.entry("Artifact Land"),
+            self.entry("Basic Land — Swamp", 10),
+        ]
+        c = decks.composition(playing, 21)
+        rows = {r["label"]: (r["count"], r["pct"]) for r in c["rows"]}
+        self.assertEqual(rows, {
+            "Creatures": (4, 19.0), "Instants": (3, 14.3), "Sorceries": (2, 9.5),
+            "Artifacts": (1, 4.8), "Lands": (11, 52.4),
+        })
+        self.assertEqual((c["spells"], c["lands"]), (10, 11))
+        self.assertEqual({m["label"]: m["count"] for m in c["multi"]},
+                         {"Artifact Creature": 2, "Enchantment Creature": 1, "Artifact Land": 1})
+        self.assertEqual([r["label"] for r in c["rows"]][0], "Creatures")  # deck-list order
+
+    def test_card_types(self):
+        self.assertEqual(decks.card_types("Legendary Artifact Creature — Golem"), ["Artifact", "Creature"])
+        self.assertEqual(decks.card_types("Creature — Human Wizard // Creature — Human Insect"), ["Creature"])
+        self.assertEqual(decks.card_types("Kindred Instant — Elf"), ["Kindred", "Instant"])
