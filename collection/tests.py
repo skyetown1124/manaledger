@@ -411,7 +411,7 @@ class CommanderSingletonTests(TestCase):
         self.add(self.ring_a, 3)
         self.assertEqual(self.count("Sol Ring"), 1)
         page = self.add(self.ring_a, 1)
-        self.assertContains(page, "Sol Ring is already in this deck")
+        self.assertContains(page, "This deck already has 1 Sol Ring")
         self.add(self.ring_b, 1)  # a different printing of the same card
         self.assertEqual(self.count("Sol Ring"), 1)
 
@@ -486,3 +486,305 @@ class CompositionTests(TestCase):
         self.assertEqual(decks.card_types("Legendary Artifact Creature — Golem"), ["Artifact", "Creature"])
         self.assertEqual(decks.card_types("Creature — Human Wizard // Creature — Human Insect"), ["Creature"])
         self.assertEqual(decks.card_types("Kindred Instant — Elf"), ["Kindred", "Instant"])
+
+
+# ------------------------------------------------------------------ Format rules
+
+def rules_card(name, type_line="Legendary Creature — Human", text="", identity=""):
+    return {"name": name, "type_line": type_line, "oracle_text": text, "quantity": 1,
+            "details_loaded": True, "color_identity": identity}
+
+
+class FormatRuleTests(TestCase):
+    def test_copy_limits(self):
+        self.assertEqual(decks.copy_limit("commander", "Artifact", ""), 1)
+        self.assertEqual(decks.copy_limit("modern", "Instant", ""), 4)
+        self.assertIsNone(decks.copy_limit("commander", "Basic Land — Swamp", ""))
+        self.assertIsNone(decks.copy_limit("commander", "Basic Snow Land — Island", ""))
+        self.assertIsNone(decks.copy_limit("casual", "Instant", ""))
+        self.assertIsNone(decks.copy_limit("commander", "Creature — Rat",
+                                           "A deck can have any number of cards named Relentless Rats."))
+        self.assertEqual(decks.copy_limit("commander", "Creature — Dwarf",
+                                          "A deck can have up to seven cards named Seven Dwarves."), 7)
+        self.assertEqual(decks.copy_limit("vintage", "Artifact", "", {"vintage": "restricted"}), 1)
+        self.assertEqual(decks.copy_limit("legacy", "Artifact", "", {"vintage": "restricted", "legacy": "legal"}), 4)
+
+    def test_legality(self):
+        self.assertEqual(decks.legality_problem("commander", "Mana Crypt", {"commander": "banned"}),
+                         "Mana Crypt is banned in Commander.")
+        self.assertIn("isn't legal", decks.legality_problem("standard", "Sol Ring", {"standard": "not_legal"}))
+        self.assertIsNone(decks.legality_problem("vintage", "Sol Ring", {"vintage": "restricted"}))
+        self.assertIsNone(decks.legality_problem("casual", "Mana Crypt", {"casual": "banned"}))
+        self.assertIsNone(decks.legality_problem("commander", "New Card", {}))  # not loaded yet
+
+    def test_single_commander(self):
+        self.assertIsNone(decks.commander_problem([rules_card("Sheoldred")]))
+        self.assertIn("isn't a legendary creature", decks.commander_problem([rules_card("Bear", "Creature — Bear")]))
+        self.assertIsNone(decks.commander_problem([rules_card(
+            "Teferi, Temporal Archmage", "Legendary Planeswalker — Teferi", "Teferi, Temporal Archmage can be your commander.")]))
+        self.assertIn("Background", decks.commander_problem([rules_card("Cloakwood Hermit", "Legendary Enchantment — Background")]))
+        self.assertIn("one commander", decks.commander_problem([dict(rules_card("A"), quantity=2)]))
+        self.assertIn("Add a legendary creature", decks.commander_problem([]))
+
+    def test_pairs(self):
+        partner = "Partner (You can have two commanders if both have partner.)"
+        a, b = rules_card("Thrasios", text=partner), rules_card("Tymna", text="Lifelink\n" + partner)
+        self.assertIsNone(decks.commander_problem([a, b]))
+        self.assertIn("can't be commanders together", decks.commander_problem([a, rules_card("Sheoldred")]))
+
+        pir = rules_card("Pir, Imaginative Rascal", text="Partner with Toothy, Imaginary Friend (When this creature enters...)")
+        toothy = rules_card("Toothy, Imaginary Friend", text="Partner with Pir, Imaginative Rascal (When this creature enters...)")
+        self.assertIsNone(decks.commander_problem([pir, toothy]))
+        self.assertIn("can only partner with Toothy", decks.commander_problem([pir, a]))
+
+        f1 = rules_card("Will", text="Friends forever (You can have two commanders if both have friends forever.)")
+        f2 = rules_card("Mike", text="Friends forever (You can have two commanders if both have friends forever.)")
+        self.assertIsNone(decks.commander_problem([f1, f2]))
+
+        chooser = rules_card("Wilson", text="Choose a Background (You can have a Background as a second commander.)")
+        bg = rules_card("Cloakwood Hermit", "Legendary Enchantment — Background")
+        self.assertIsNone(decks.commander_problem([chooser, bg]))
+        self.assertIsNotNone(decks.commander_problem([rules_card("Sheoldred"), bg]))
+
+        companion = rules_card("Rose Tyler", text="Doctor's companion (You can have two commanders if the other is the Doctor.)")
+        doctor = rules_card("The Tenth Doctor", "Legendary Creature — Time Lord Doctor")
+        self.assertIsNone(decks.commander_problem([companion, doctor]))
+
+        s1 = rules_card("Ellie", text="Partner—Survivors (You can have two commanders if both have this ability.)")
+        s2 = rules_card("Joel", text="Partner—Survivors (You can have two commanders if both have this ability.)")
+        self.assertIsNone(decks.commander_problem([s1, s2]))
+
+    def test_checklist_separates_banned(self):
+        e = dict(card_id=1, name="Mana Crypt", set_code="x", collector_number="1", board="main", quantity=1,
+                 type_line="Artifact", mana_cost="{0}", cmc=0, colors="", color_identity="", oracle_text="",
+                 legalities={"commander": "banned"}, details_loaded=True, price=1.0, owned=1, is_basic=False)
+        checks = {c["label"]: c for c in decks.analyze("commander", [e])["checks"]}
+        self.assertFalse(checks["No cards banned in Commander"]["ok"])
+        self.assertIn("Mana Crypt", checks["No cards banned in Commander"]["detail"])
+
+    def test_vintage_restricted_copy_check(self):
+        e = dict(card_id=1, name="Sol Ring", set_code="x", collector_number="1", board="main", quantity=2,
+                 type_line="Artifact", mana_cost="{1}", cmc=1, colors="", color_identity="", oracle_text="",
+                 legalities={"vintage": "restricted"}, details_loaded=True, price=1.0, owned=2, is_basic=False)
+        checks = {c["label"]: c for c in decks.analyze("vintage", [e])["checks"]}
+        bad = checks["Up to 4 copies of each card, 1 of each restricted card"]
+        self.assertFalse(bad["ok"])
+        self.assertIn("Sol Ring (2 of 1)", bad["detail"])
+
+
+class DeckRuleEnforcementTests(TestCase):
+    """The deck builder refuses changes the format doesn't allow."""
+
+    def setUp(self):
+        partner = "Partner (You can have two commanders if both have partner.)"
+        self.sheoldred = make_card("Sheoldred", colors="B", color_identity="B", type_line="Legendary Creature — Praetor")
+        self.thrasios = make_card("Thrasios", colors="GU", color_identity="GU",
+                                  type_line="Legendary Creature — Merfolk", oracle_text=partner)
+        self.tymna = make_card("Tymna", colors="WB", color_identity="WB",
+                               type_line="Legendary Creature — Human", oracle_text=partner)
+        self.crypt = make_card("Mana Crypt", legalities={**LEGAL_ALL, "commander": "banned", "vintage": "restricted"})
+        self.bolt = make_card("Lightning Bolt", colors="R", color_identity="R", type_line="Instant")
+        self.ponder = make_card("Ponder", colors="U", color_identity="U", type_line="Sorcery")
+        self.island = make_card("Island", type_line="Basic Land — Island", color_identity="U")
+        for c in (self.sheoldred, self.thrasios, self.tymna, self.crypt, self.bolt, self.ponder):
+            CollectionItem.objects.create(card=c, quantity=6)
+        self.edh = Deck.objects.create(name="EDH", format="commander")
+
+    def add(self, deck, card, qty=1, board="main"):
+        return self.client.post(reverse("collection:deck_add", args=[deck.pk]),
+                                {"card_id": card.pk, "quantity": qty, "board": board}, follow=True)
+
+    def in_deck(self, deck, card):
+        return sum(DeckCard.objects.filter(deck=deck, card=card).values_list("quantity", flat=True))
+
+    def test_banned_card_is_refused(self):
+        page = self.add(self.edh, self.crypt)
+        self.assertContains(page, "Mana Crypt is banned in Commander.")
+        self.assertEqual(self.in_deck(self.edh, self.crypt), 0)
+
+    def test_commander_slot_rules(self):
+        self.add(self.edh, self.sheoldred, board="commander")
+        page = self.add(self.edh, self.thrasios, board="commander")  # no partner on Sheoldred
+        self.assertContains(page, "can&#x27;t be commanders together")
+        self.assertEqual(self.in_deck(self.edh, self.thrasios), 0)
+
+        pair = Deck.objects.create(name="Partners", format="commander")
+        self.add(pair, self.thrasios, board="commander")
+        self.add(pair, self.tymna, board="commander")
+        self.assertEqual(DeckCard.objects.filter(deck=pair, board="commander").count(), 2)
+        page = self.add(pair, self.sheoldred, board="commander")
+        self.assertContains(page, "already has two commanders")
+
+    def test_color_identity_is_enforced(self):
+        self.add(self.edh, self.sheoldred, board="commander")
+        page = self.add(self.edh, self.bolt)
+        self.assertContains(page, "outside your commander")
+        self.assertEqual(self.in_deck(self.edh, self.bolt), 0)
+        self.client.post(reverse("collection:deck_add_basics", args=[self.edh.pk]), {"island": 10})
+        self.assertEqual(self.in_deck(self.edh, self.island), 0)  # Islands are blue
+
+    def test_four_copy_limit_and_vintage_restricted(self):
+        modern = Deck.objects.create(name="Modern", format="modern")
+        self.add(modern, self.bolt, qty=6)
+        self.assertEqual(self.in_deck(modern, self.bolt), 4)
+        vintage = Deck.objects.create(name="Vintage", format="vintage")
+        self.add(vintage, self.crypt, qty=3)
+        self.assertEqual(self.in_deck(vintage, self.crypt), 1)
+
+    def test_library_panel_labels(self):
+        self.add(self.edh, self.sheoldred, board="commander")
+        page = self.client.get(reverse("collection:deck", args=[self.edh.pk]) + "?fit=0")
+        self.assertContains(page, "Banned in Commander")
+        self.assertContains(page, "Outside your commander&#x27;s colors")
+
+
+# ------------------------------------------------------------------ Photo import (OCR)
+
+import io as _io
+import os as _os
+import unittest as _unittest
+
+from django.core.files.uploadedfile import SimpleUploadedFile
+
+from . import ocr
+
+
+def L(text, top, left=100, height=20):
+    return ocr.TextLine(text, left, top, left + 10 * len(text), top + height)
+
+
+def ocr_card(name, set_code, number):
+    return {"name": name, "set_code": set_code, "collector_number": number}
+
+
+class FakeScryfallForPhotos:
+    CARDS = [ocr_card("Sheoldred, the Apocalypse", "dmu", "107"), ocr_card("Look Alike", "omu", "107"),
+             ocr_card("Lightning Bolt", "2xm", "117"), ocr_card("Llanowar Elves", "dom", "168")]
+
+    def sets(self):
+        return [{"code": "dmu", "size": 281}, {"code": "omu", "size": 99}, {"code": "2xm", "size": 332},
+                {"code": "dom", "size": 269}]
+
+    def lookup(self, ids):
+        return [c for c in self.CARDS for i in ids
+                if c["set_code"] == i["set"] and c["collector_number"] == i["collector_number"]], []
+
+    def fuzzy(self, name):
+        best = max(self.CARDS, key=lambda c: ocr.similarity(name, c["name"]))
+        return best if ocr.similarity(name, best["name"]) > 0.6 else None
+
+    def search(self, query):
+        return [c for c in self.CARDS if c["name"] in query and f'cn:{c["collector_number"]}' in query]
+
+
+class OcrParsingTests(TestCase):
+    def test_anchors_from_collector_lines(self):
+        lines = [L("Sheoldred, the Apocalypse", 10, height=40), L("4/5", 900, left=500),
+                 L("107/281 M", 950), L("OMU • EN Chris Rahn", 975)]
+        found = ocr.anchors(lines)
+        self.assertEqual([(a.number, a.total, a.rarity, a.set_text) for a in found], [("107", "281", "M", "OMU")])
+
+    def test_new_frame_number_without_total(self):
+        found = ocr.anchors([L("0196 M", 950), L("ONE • EN Marta Nael", 975)])
+        self.assertEqual([(a.number, a.set_text) for a in found], [("196", "ONE")])
+
+    def test_set_candidates_fix_misreads(self):
+        known = FakeScryfallForPhotos().sets()
+        self.assertEqual(ocr.set_candidates("DMU", "", known)[0], "dmu")
+        self.assertIn("dmu", ocr.set_candidates("OMU", "", known))       # O misread for D
+        self.assertIn("dmu", ocr.set_candidates("NMILE", "281", known))  # unreadable, but 281 cards
+        self.assertEqual(ocr.set_candidates("", "", known), [])
+
+    def test_name_candidates(self):
+        lines = [L("Sheoldred, the Apocalypse", 10, height=40), L("Legendary Creature — Phyrexian Praetor", 400),
+                 L("Whenever you draw a card, you gain 2 life.", 500), L("DMU • EN Chris Rahn", 975),
+                 L("Lightning Bolt", 20, left=900, height=40)]
+        self.assertEqual(ocr.name_candidates(lines), ["Sheoldred, the Apocalypse", "Lightning Bolt"])
+
+    def test_similarity_tolerates_ocr_noise(self):
+        self.assertGreater(ocr.similarity("Sheo1dred, the Apocalypse", "Sheoldred, the Apocalypse"), 0.9)
+        self.assertGreater(ocr.similarity("Delver of Secrets", "Delver of Secrets // Insectile Aberration"), 0.99)
+        self.assertLess(ocr.similarity("Whenever", "Sheoldred, the Apocalypse"), 0.5)
+
+
+class OcrIdentifyTests(TestCase):
+    def identify(self, *photo_lines):
+        photos = [(f"photo{i}.jpg", lines) for i, lines in enumerate(photo_lines, 1)]
+        return ocr.identify(photos, lambda lines: (lines, (1000, 1000)), FakeScryfallForPhotos())
+
+    def test_number_plus_name_picks_the_right_printing(self):
+        result = self.identify([L("Sheoldred, the Apocalypse", 10, height=40), L("107/281 M", 950),
+                                L("OMU • EN Chris Rahn", 975)])[0]
+        self.assertEqual([(c["set_code"], c["collector_number"]) for c in result.cards], [("dmu", "107")])
+        self.assertEqual(result.message, "Found 1 card.")
+
+    def test_old_card_by_name_and_unreadable_photo(self):
+        old, blank = self.identify([L("Llanowar Elves", 10, height=40)], [L("zzkq", 10)])
+        self.assertEqual(old.cards[0]["name"], "Llanowar Elves")
+        self.assertIn("default printing", old.message)
+        self.assertEqual(blank.cards, [])
+        self.assertIn("Couldn't read a card", blank.message)
+
+    def test_list_text_counts_duplicates(self):
+        results = self.identify([L("Lightning Bolt", 10, height=40), L("117/332 U", 950), L("2XM • EN", 975)],
+                                [L("Lightning Bolt", 10, height=40), L("117/332 U", 950), L("2XM • EN", 975)])
+        self.assertEqual(ocr.to_list_text(results), "2 Lightning Bolt (2XM) 117")
+
+
+FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"
+
+
+@_unittest.skipUnless(ocr.status()[0] and _os.path.exists(FONT), "needs Tesseract and the DejaVu fonts")
+class OcrRealImageTests(TestCase):
+    """Runs the real Tesseract OCR on a generated card-like image."""
+
+    def make_photo(self):
+        from PIL import Image, ImageDraw, ImageFont
+        big = ImageFont.truetype(FONT, 34)
+        small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 15)
+        img = Image.new("RGB", (750, 1000), (120, 100, 80))
+        d = ImageDraw.Draw(img)
+        d.rounded_rectangle((60, 60, 690, 940), 18, fill=(30, 30, 30))
+        d.rounded_rectangle((82, 82, 668, 880), 18, fill=(214, 206, 190))
+        d.rectangle((100, 100, 650, 152), fill=(236, 230, 214))
+        d.text((112, 108), "Sheoldred, the Apocalypse", font=big, fill=(10, 10, 10))
+        d.text((104, 866), "107/281 M", font=small, fill=(235, 235, 235))
+        d.text((104, 886), "DMU • EN  Chris Rahn", font=small, fill=(235, 235, 235))
+        return img
+
+    def test_reads_name_and_collector_info(self):
+        result = ocr.identify([("card.jpg", self.make_photo())], ocr.read_lines, FakeScryfallForPhotos())[0]
+        self.assertEqual([(c["name"], c["set_code"]) for c in result.cards], [("Sheoldred, the Apocalypse", "dmu")])
+
+
+class PhotoUploadViewTests(TestCase):
+    def png(self):
+        from PIL import Image
+        buf = _io.BytesIO()
+        Image.new("RGB", (40, 40), "white").save(buf, "PNG")
+        return SimpleUploadedFile("cards.png", buf.getvalue(), content_type="image/png")
+
+    @mock.patch.object(scryfall, "lookup", fake_lookup)
+    @mock.patch.object(ocr, "status", lambda: (True, ""))
+    def test_photos_fill_the_list_and_run_the_check(self):
+        found = ocr.PhotoResult("cards.png", cards=[{"name": "Lightning Bolt", "set_code": "2xm", "collector_number": "117"}],
+                                message="Found 1 card.")
+        with mock.patch.object(ocr, "identify", return_value=[found]):
+            page = self.client.post(reverse("collection:import"),
+                                    {"action": "photos", "cards": "2 Counterspell", "photos": [self.png()]})
+        self.assertEqual(page.context["text"], "2 Counterspell\n1 Lightning Bolt (2XM) 117")
+        self.assertContains(page, "What was read")
+        self.assertContains(page, "Add 3 cards to my library")
+        self.assertEqual(CollectionItem.objects.count(), 0)
+
+    @mock.patch.object(ocr, "status", lambda: (True, ""))
+    def test_non_image_files_are_skipped(self):
+        bad = SimpleUploadedFile("notes.txt", b"hello", content_type="text/plain")
+        page = self.client.post(reverse("collection:import"), {"action": "photos", "photos": [bad]})
+        self.assertContains(page, "isn&#x27;t a photo the app can open")
+
+    @mock.patch.object(ocr, "status", lambda: (False, "Photo import needs the free Tesseract OCR program."))
+    def test_explains_when_tesseract_is_missing(self):
+        page = self.client.get(reverse("collection:import"))
+        self.assertContains(page, "Photo import needs the free Tesseract OCR program.")
+        self.assertNotContains(page, 'id="photo-form"')

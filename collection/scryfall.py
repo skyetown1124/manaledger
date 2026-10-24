@@ -79,6 +79,29 @@ def get_card(scryfall_id):
     return parse_card(data)
 
 
+_sets_cache = None
+
+
+def sets():
+    """Every set: [{"code", "name", "size"}]. Fetched once per run of the app."""
+    global _sets_cache
+    if _sets_cache is None:
+        data = _request("GET", "/sets") or {}
+        _sets_cache = [
+            {"code": s["code"], "name": s.get("name", ""), "size": s.get("printed_size") or s.get("card_count") or 0}
+            for s in data.get("data", [])
+        ]
+    return _sets_cache
+
+
+def fuzzy(name):
+    """Best match for a possibly misspelled name (e.g. from OCR), or None."""
+    if len(name.strip()) < 3:
+        return None
+    data = _request("GET", "/cards/named", params={"fuzzy": name})
+    return parse_card(data) if data else None
+
+
 def named(name):
     """The default printing of a card, by exact name (used for basic lands)."""
     data = _request("GET", "/cards/named", params={"exact": name})

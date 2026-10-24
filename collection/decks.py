@@ -33,6 +33,14 @@ TYPE_GROUPS = [
 CURVE_LABELS = ["0", "1", "2", "3", "4", "5", "6", "7+"]
 SYMBOL_RE = re.compile(r"\{([^}]+)\}")
 ANY_NUMBER_RE = re.compile(r"a deck can have any number of cards named", re.I)
+UP_TO_RE = re.compile(r"a deck can have up to (\w+) cards named", re.I)   # Seven Dwarves, Nazgûl
+NUMBER_WORDS = {w: i for i, w in enumerate(
+    "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen".split())}
+
+# Two-commander pairings (Commander rules 702.124 and related)
+PARTNER_RE = re.compile(r"^Partner\s*(?:\(|$)", re.M)                     # plain "Partner"
+PARTNER_WITH_RE = re.compile(r"^Partner with ([^\n(]+?)\s*(?:\(|$)", re.M)  # "Partner with <name>"
+PARTNER_GROUP_RE = re.compile(r"^Partner—([^\n(]+?)\s*(?:\(|$)", re.M)      # "Partner—Survivors" etc.
 
 
 def copy_limit_exempt(type_line, oracle_text):
@@ -43,6 +51,107 @@ def copy_limit_exempt(type_line, oracle_text):
 
 def enforces_singleton(fmt):
     return FORMAT_RULES.get(fmt, {}).get("copies") == 1
+
+
+def copy_limit(fmt, type_line, oracle_text, legalities=None):
+    """Most copies of one card name a deck may hold in this format, or None for no limit.
+
+    Basic lands and "any number" cards: no limit. "Up to seven cards named ...": that number.
+    Restricted in this format (Vintage): 1. Otherwise the format's limit (1 in Commander, 4 elsewhere).
+    """
+    rules = FORMAT_RULES.get(fmt, FORMAT_RULES["casual"])
+    if rules["copies"] is None or copy_limit_exempt(type_line, oracle_text):
+        return None
+    match = UP_TO_RE.search(oracle_text or "")
+    if match:
+        word = match.group(1).lower()
+        n = NUMBER_WORDS.get(word) or (int(word) if word.isdigit() else None)
+        if n:
+            return n
+    if (legalities or {}).get(fmt) == "restricted":
+        return 1
+    return rules["copies"]
+
+
+def legality_problem(fmt, name, legalities):
+    """Why a card can't be played in this format, or None. Unknown legality isn't a problem here."""
+    if fmt == "casual" or not legalities:
+        return None
+    status = legalities.get(fmt)
+    if status == "banned":
+        return f"{name} is banned in {fmt.capitalize()}."
+    if status == "not_legal":
+        return f"{name} isn't legal in {fmt.capitalize()}."
+    return None
+
+
+def _text(e):
+    return e.get("oracle_text") or ""
+
+
+def can_be_commander(e):
+    """A legendary creature, or a card that says it can be your commander."""
+    front = (e.get("type_line") or "").split("//")[0]
+    return ("Legendary" in front and "Creature" in front) or "can be your commander" in _text(e).lower()
+
+
+def is_background(e):
+    t = e.get("type_line") or ""
+    return "Enchantment" in t and "Background" in t
+
+
+def _same_name(written, card_name):
+    written = written.strip().lower()
+    return written in (card_name.lower(), card_name.split(" // ")[0].lower())
+
+
+def pair_problem(a, b):
+    """None if cards a and b can be commanders together; otherwise the reason they can't."""
+    ta, tb = _text(a), _text(b)
+    if PARTNER_RE.search(ta) and PARTNER_RE.search(tb):
+        return None
+    wa, wb = PARTNER_WITH_RE.search(ta), PARTNER_WITH_RE.search(tb)
+    if wa and wb and _same_name(wa.group(1), b["name"]) and _same_name(wb.group(1), a["name"]):
+        return None
+    ga, gb = PARTNER_GROUP_RE.search(ta), PARTNER_GROUP_RE.search(tb)
+    if ga and gb and ga.group(1).strip().lower() == gb.group(1).strip().lower():
+        return None
+    if re.search(r"^Friends forever", ta, re.M) and re.search(r"^Friends forever", tb, re.M):
+        return None
+    for x, y in ((a, b), (b, a)):
+        if "choose a background" in _text(x).lower() and is_background(y) and can_be_commander(x):
+            return None
+        if "doctor's companion" in _text(x).lower() and "Time Lord Doctor" in (y.get("type_line") or ""):
+            return None
+    if wa or wb:
+        named = wa.group(1).strip() if wa else wb.group(1).strip()
+        return f"{a['name'] if wa else b['name']} can only partner with {named}."
+    return (f"{a['name']} and {b['name']} can't be commanders together. Two commanders need a pairing ability: "
+            "Partner, Friends forever, Choose a Background, or Doctor's companion.")
+
+
+def commander_problem(commanders):
+    """Check the command zone. `commanders` is a list of entry dicts. Returns None or a message."""
+    copies = sum(e["quantity"] for e in commanders)
+    if copies == 0:
+        return "Add a legendary creature to the Commander section."
+    if copies > 2 or any(e["quantity"] > 1 for e in commanders):
+        return "A deck has one commander, or two that can pair up."
+    if not all(e.get("details_loaded", True) for e in commanders):
+        return None  # text not loaded yet; can't judge
+    if copies == 1:
+        e = commanders[0]
+        if is_background(e):
+            return f"{e['name']} is a Background. It goes with a commander that says \"Choose a Background\"."
+        return None if can_be_commander(e) else f"{e['name']} can't be a commander: it isn't a legendary creature."
+    a, b = commanders
+    problem = pair_problem(a, b)
+    if problem:
+        return problem
+    for e in (a, b):
+        if not can_be_commander(e) and not is_background(e):
+            return f"{e['name']} can't be a commander: it isn't a legendary creature."
+    return None
 
 
 CARD_TYPES = ["Kindred", "Tribal", "Artifact", "Battle", "Creature", "Enchantment",
@@ -123,10 +232,6 @@ def pips(mana_cost):
                 counts[c] += 1
     return counts
 
-
-def _can_be_commander(e):
-    t = e["type_line"] or ""
-    return ("Legendary" in t and "Creature" in t) or "can be your commander" in (e["oracle_text"] or "").lower()
 
 
 def _ok(label, detail=""):
@@ -214,28 +319,25 @@ def analyze(fmt, entries):
                 checks.append(_ok(f"Sideboard {side_count} of {rules['side']}"))
 
         # Copy limit counts every printing of a name, main deck and sideboard together.
-        per_name = Counter()
-        exempt = set()
+        per_name, limits = Counter(), {}
         for e in entries:
             per_name[e["name"]] += e["quantity"]
-            if e["is_basic"] or copy_limit_exempt(e["type_line"], e["oracle_text"]):
-                exempt.add(e["name"])
-        limit = rules["copies"]
-        over = [f"{n} ({c})" for n, c in per_name.items() if n not in exempt and c > limit]
-        label = "Singleton: one copy of each card" if limit == 1 else f"Up to {limit} copies of each card"
-        checks.append(_bad(label, "Too many copies of " + _names(over) + ".") if over else _ok(label))
+            limits[e["name"]] = copy_limit(fmt, e["type_line"], e["oracle_text"], e["legalities"])
+        over = [f"{n} ({c} of {limits[n]})" for n, c in per_name.items()
+                if limits[n] is not None and c > limits[n]]
+        if fmt == "commander":
+            label = "Singleton: one copy of each card"
+        elif fmt == "vintage":
+            label = "Up to 4 copies of each card, 1 of each restricted card"
+        else:
+            label = f"Up to {rules['copies']} copies of each card"
+        checks.append(_bad(label, "Too many copies of " + _names(over) + ".") if over
+                      else _ok(label, "Basic lands are unlimited."))
 
         if fmt == "commander":
-            if commander_count == 0:
-                checks.append(_bad("Commander chosen", "Add a legendary creature to the Commander section."))
-            elif commander_count > 2:
-                checks.append(_bad("Commander chosen", f"{commander_count} commanders. A deck has one, or two with Partner."))
-            else:
-                not_eligible = [e["name"] for e in by_board["commander"] if e["details_loaded"] and not _can_be_commander(e)]
-                if not_eligible:
-                    checks.append(_bad("Commander chosen", _names(not_eligible) + " can't be a commander."))
-                else:
-                    checks.append(_ok("Commander chosen", " & ".join(e["name"] for e in by_board["commander"])))
+            problem = commander_problem(by_board["commander"])
+            names = " & ".join(e["name"] for e in by_board["commander"])
+            checks.append(_bad("Valid commander", problem) if problem else _ok("Valid commander", names))
             if commander_count:
                 allowed = set("".join(e["color_identity"] or "" for e in by_board["commander"]))
                 outside = [e["name"] for e in by_board["main"] if set(e["color_identity"] or "") - allowed]
@@ -244,16 +346,22 @@ def analyze(fmt, entries):
                 verb = "uses" if len(outside) == 1 else "use"
                 checks.append(_bad(label, f"{_names(outside)} {verb} colors outside your commander's.") if outside else _ok(label))
 
-        unknown = [e for e in entries if not e["legalities"]]
-        illegal = sorted({e["name"] for e in entries
-                          if e["legalities"] and e["legalities"].get(fmt) not in ("legal", "restricted")})
-        label = f"Every card is legal in {fmt.capitalize()}"
-        if illegal:
-            checks.append(_bad(label, _names(illegal) + " aren't legal (banned or not allowed)."))
+        name = fmt.capitalize()
+        unknown = {e["name"] for e in entries if not e["legalities"]}
+        banned = sorted({e["name"] for e in entries if (e["legalities"] or {}).get(fmt) == "banned"})
+        not_legal = sorted({e["name"] for e in entries if (e["legalities"] or {}).get(fmt) == "not_legal"})
+        checks.append(_bad(f"No cards banned in {name}", "Banned: " + _names(banned) + ".") if banned
+                      else _ok(f"No cards banned in {name}"))
+        if not_legal:
+            checks.append(_bad(f"Every card is legal in {name}", _names(not_legal) + " can't be played in this format."))
         elif unknown:
-            checks.append(_bad(label, f"Refresh prices to load legality for {len(unknown)} card(s)."))
+            checks.append(_bad(f"Every card is legal in {name}",
+                               f"Refresh prices to load legality for {len(unknown)} card(s)."))
         else:
-            checks.append(_ok(label))
+            checks.append(_ok(f"Every card is legal in {name}"))
+        restricted = sorted({e["name"] for e in entries if (e["legalities"] or {}).get(fmt) == "restricted"})
+        if restricted:
+            checks.append(_ok(f"Restricted cards: {len(restricted)}", _names(restricted) + " (one copy each)."))
 
     # Ownership: you can only build with cards in your library (basic lands excepted).
     short = [f'{e["name"]} (deck uses {e["used"]}, you own {e["owned"]})'

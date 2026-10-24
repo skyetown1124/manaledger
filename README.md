@@ -64,9 +64,23 @@ Open http://127.0.0.1:8000/ and use **Add Cards** to search for your first card.
     artifacts, enchantments, planeswalkers, battles and lands, each as a share
     of the deck with its average CMC, plus a grid of spells by type and CMC.
 
-  Commander decks are singleton: the deck builder won't add a second copy of
-  any card (any printing, any section). Basic lands, and cards that say "A deck
-  can have any number of cards named ...", are exempt.
+  The deck builder enforces each format's rules as you add cards, and the
+  checklist shows anything that still needs fixing (for example after you
+  change a deck's format):
+
+  | Rule | Commander | Other formats |
+  | --- | --- | --- |
+  | Copies of a card (all printings, main deck and sideboard together) | 1 | 4; 1 for cards restricted in Vintage |
+  | Basic lands and "any number of cards named" cards | unlimited | unlimited |
+  | "Up to seven/nine cards named" cards (Seven Dwarves, Nazgûl) | that number | that number |
+  | Banned or not legal in the format | refused | refused |
+  | Deck size | exactly 100 with commander(s) | at least 60, sideboard up to 15 |
+  | Commander | a legendary creature, or a card that says it can be your commander | |
+  | Two commanders | both have Partner, Partner with each other, the same Partner—group, Friends forever, Choose a Background + a Background, or Doctor's companion + a Time Lord Doctor | |
+  | Color identity | every card, basic lands included, fits within the commander(s) | |
+
+  Banned, restricted and legal status comes from Scryfall and updates when you
+  press **Refresh prices**.
 
   For Commander decks, add your commander first. The library search then shows
   only cards that fit your commander's colors (untick the box to see all).
@@ -98,7 +112,36 @@ collector number are in the bottom-left corner (for example `DMU · 107`). If a
 line's number belongs to a different card than the name says, the check flags
 it instead of guessing.
 
-From the terminal, the same thing works with a text file:
+### Reading cards from photos
+
+At the top of the Import page, **Read photos** takes up to 20 photos of
+cards and fills the list for you, using the free Tesseract OCR program (no
+account or API key). Several cards per photo is fine.
+
+- Cards printed since about 2015 are matched to their exact printing from the
+  small set code and collector number in the bottom-left corner. That print is
+  tiny, so the app cross-checks it against the card name in the photo.
+- Older cards without that corner info are found by name, with Scryfall's
+  default printing. Change the set in the list if yours is different.
+- Foils can't be told apart in photos; add `*F*` to those lines.
+- Everything read lands in the list, and nothing is added until you check it
+  and press **Add**.
+
+Photo reading needs Tesseract installed:
+
+- **New codespace:** installed automatically.
+- **Existing codespace:** run
+  `sudo apt-get update && sudo apt-get install -y tesseract-ocr && pip install -r requirements.txt`
+  (or use **Rebuild Container** from the Command Palette).
+- **Mac:** `brew install tesseract`. **Windows:** install it from
+  https://github.com/UB-Mannheim/tesseract/wiki and add it to your PATH.
+
+Without Tesseract the rest of the app works, and the Import page says what to
+install.
+
+### From the terminal
+
+The same thing works with a text file:
 
 ```bash
 python manage.py import_cards my-cards.txt --check   # match only, add nothing
@@ -159,6 +202,7 @@ python manage.py refresh_prices
 | `collection/models.py` | `Card` (one printing, with its rules text), `CollectionItem` (copies you own, per finish), `Deck` and `DeckCard` (a deck and the cards in it), `PriceSnapshot` (a card's price on one day), `CollectionSnapshot` (your total on one day) |
 | `collection/scryfall.py` | Scryfall client: search, autocomplete, batch lookups of 75 cards per request, polite rate limiting and headers |
 | `collection/services.py` | Saving cards, adding to the collection, refreshing prices, recording snapshots |
+| `collection/ocr.py` | Reads card photos with Tesseract and identifies each card |
 | `collection/importer.py` | Reads a pasted card list and matches each line to a Scryfall printing |
 | `collection/search.py` | Turns a search like `t:creature mv<=3` into a database filter, plus a plain-English summary |
 | `collection/decks.py` | Deck rules and stats: format checks, mana curve, colors, export text (plain Python, no database calls) |

@@ -5,6 +5,41 @@
 
 {% block content %}
 <section class="panel">
+  <div class="section-head"><span>Read cards from photos</span></div>
+  {% if ocr_ready %}
+    <form method="post" enctype="multipart/form-data" class="photo-form" id="photo-form">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="photos">
+      <input type="hidden" name="cards" id="photo-cards" value="">
+      <label for="photo-files" class="sr">Card photos</label>
+      <input type="file" id="photo-files" name="photos" accept="image/*" multiple required>
+      <button type="submit" class="btn primary" id="photo-submit">Read photos</button>
+      <span class="small muted">Up to {{ max_photos }} photos. Reading takes a few seconds per photo.</span>
+    </form>
+    <ul class="note photo-tips">
+      <li>Lay cards flat in good light, avoid glare, and fill the frame. Several cards per photo is fine.</li>
+      <li>Cards from about 2015 on are matched to the exact printing by the small set code and number in the bottom-left corner. Older cards are found by name, using the default printing.</li>
+      <li>What's read goes into the list below so you can fix anything before adding. Foils can't be told apart in photos: add <code>*F*</code> to those lines.</li>
+    </ul>
+  {% else %}
+    <div class="message">{{ ocr_message }}</div>
+  {% endif %}
+
+  {% if photo_results %}
+    <h4 class="group-title">What was read</h4>
+    <ul class="photo-results">
+      {% for p in photo_results %}
+        <li class="{% if p.cards %}ok{% else %}bad{% endif %}">
+          <strong>{{ p.filename }}</strong>
+          <span class="small">{{ p.message }}</span>
+          {% if p.cards %}<div class="small muted">{% for c in p.cards %}{{ c.name }} ({{ c.set_code|upper }} #{{ c.collector_number }}){% if not forloop.last %} · {% endif %}{% endfor %}</div>{% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</section>
+
+<section class="panel">
   <div class="section-head"><span>Paste a card list</span></div>
   <form method="post" class="import-form">
     {% csrf_token %}
@@ -93,4 +128,21 @@
   {% endif %}
 </section>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Keep anything already typed in the list when reading photos, and show progress.
+  (function () {
+    var form = document.getElementById("photo-form");
+    if (!form) return;
+    form.addEventListener("submit", function () {
+      var list = document.getElementById("import-cards");
+      document.getElementById("photo-cards").value = list ? list.value : "";
+      var button = document.getElementById("photo-submit");
+      button.disabled = true;
+      button.textContent = "Reading photos…";
+    });
+  })();
+</script>
 {% endblock %}

@@ -40,7 +40,7 @@
               {% for e in group.entries %}
                 <tr class="{% if not e.is_basic and e.owned < e.quantity %}short{% endif %}">
                   <td class="qty-cell">
-                    <input class="qty" type="number" min="0" {% if e.singleton %}max="1" title="One copy allowed in Commander"{% endif %} name="quantity" id="entry-qty-{{ e.id }}" value="{{ e.quantity }}" form="entry-{{ e.id }}" aria-label="Copies of {{ e.name }}">
+                    <input class="qty" type="number" min="0" {% if e.limit %}max="{{ e.limit }}" title="Up to {{ e.limit }} in this format"{% endif %} name="quantity" id="entry-qty-{{ e.id }}" value="{{ e.quantity }}" form="entry-{{ e.id }}" aria-label="Copies of {{ e.name }}">
                   </td>
                   <td class="card-cell">
                     <div class="card-name">
@@ -125,7 +125,7 @@
     <p class="note">{{ matches }} card{{ matches|pluralize }} in your library match{{ matches|pluralize:"es," }}{% if matches > results|length %}; showing the first {{ results|length }}. Search to narrow it down{% endif %}.</p>
     <ul class="library-list">
       {% for r in results %}
-        <li class="{% if r.blocked or not r.free and not r.card.is_basic_land %}used-up{% endif %}">
+        <li class="{% if r.blocked or r.max_add == 0 %}used-up{% endif %}">
           <div class="lib-card">
             <div class="card-name">
               <a href="{{ r.card.scryfall_uri }}" target="_blank" rel="noopener">{{ r.card.name }}</a>
@@ -138,18 +138,18 @@
           </div>
           <div class="lib-add">
             {% if r.blocked %}
-              <span class="small muted">In deck · one copy allowed</span>
-            {% elif r.free or r.card.is_basic_land %}
-              <span class="small {% if r.used %}muted{% endif %}">{% if r.singleton %}Singleton · {% endif %}{{ r.free }} of {{ r.owned }} free</span>
+              <span class="small {% if 'Banned' in r.blocked or 'Not legal' in r.blocked or 'Outside' in r.blocked %}down{% else %}muted{% endif %}">{{ r.blocked }}</span>
+            {% elif r.max_add != 0 %}
+              <span class="small {% if r.used %}muted{% endif %}">{% if r.limit == 1 %}Singleton · {% endif %}{{ r.free }} of {{ r.owned }} free</span>
               <form method="post" action="{% url 'collection:deck_add' deck.pk %}">
                 {% csrf_token %}
                 <input type="hidden" name="card_id" value="{{ r.card.pk }}">
                 <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                {% if r.singleton %}
+                {% if r.max_add == 1 %}
                   <input type="hidden" name="quantity" value="1">
                 {% else %}
                   <label class="sr" for="add-qty-{{ r.card.pk }}">Copies</label>
-                  <input type="number" name="quantity" id="add-qty-{{ r.card.pk }}" value="1" min="1" {% if not r.card.is_basic_land %}max="{{ r.free }}"{% endif %} class="qty">
+                  <input type="number" name="quantity" id="add-qty-{{ r.card.pk }}" value="1" min="1" {% if r.max_add %}max="{{ r.max_add }}"{% endif %} class="qty">
                 {% endif %}
                 <label class="sr" for="add-board-{{ r.card.pk }}">Section</label>
                 <select name="board" id="add-board-{{ r.card.pk }}" class="compact">

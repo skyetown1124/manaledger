@@ -12,7 +12,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from . import decks as deckrules
-from . import importer, scryfall, search, services
+from . import importer, ocr, scryfall, search, services
 from .models import Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, PriceSnapshot
 from .stats import build_dashboard
 
@@ -211,13 +211,54 @@ IMPORT_EXAMPLE = """4 Lightning Bolt (2XM) 117
 """
 
 
+def _read_photos(request):
+    """OCR the uploaded photos. Returns (list text, [PhotoResult], error or None)."""
+    files = request.FILES.getlist("photos")
+    if not files:
+        return "", [], "Choose at least one photo."
+    if len(files) > ocr.MAX_PHOTOS:
+        return "", [], f"That's {len(files)} photos. Upload up to {ocr.MAX_PHOTOS} at a time."
+    photos, skipped = [], []
+    for f in files:
+        if f.size > ocr.MAX_BYTES:
+            skipped.append(ocr.PhotoResult(f.name, message="Skipped: larger than 15 MB."))
+            continue
+        try:
+            image = ocr.Image.open(f)
+            image.load()
+        except Exception:
+            skipped.append(ocr.PhotoResult(f.name, message="Skipped: this file isn't a photo the app can open (use JPG or PNG)."))
+            continue
+        photos.append((f.name, image))
+    try:
+        results = ocr.identify(photos, ocr.read_lines, scryfall) if photos else []
+    except scryfall.ScryfallError as exc:
+        return "", skipped, f"Read the photos, but couldn't reach Scryfall to identify the cards. {exc}"
+    return ocr.to_list_text(results), results + skipped, None
+
+
 def import_cards(request):
-    """Paste a card list -> Check list (preview) -> Add to library."""
+    """Paste a card list (or read it from photos) -> Check list (preview) -> Add to library."""
     text = request.POST.get("cards", "") if request.method == "POST" else ""
     action = request.POST.get("action", "")
-    result, error = None, None
+    result, error, photo_results = None, None, []
+    ocr_ready, ocr_message = ocr.status()
 
-    if request.method == "POST" and action == "add":
+    if request.method == "POST" and action == "photos":
+        if not ocr_ready:
+            error = ocr_message
+        else:
+            found_text, photo_results, error = _read_photos(request)
+            if found_text:
+                text = (text.rstrip() + "\n" + found_text).strip() if text.strip() else found_text
+                try:
+                    result = importer.resolve(text, scryfall.lookup)
+                except scryfall.ScryfallError as exc:
+                    error = f"Couldn't check the list. {exc}"
+            elif not error:
+                error = "No cards were recognized in those photos. See the notes for each photo below."
+
+    elif request.method == "POST" and action == "add":
         try:
             items = json.loads(request.POST.get("items", "[]"))
             assert isinstance(items, list) and all({"id", "finish", "quantity"} <= set(i) for i in items)
@@ -248,6 +289,8 @@ def import_cards(request):
         "active_tab": "import", "text": text, "result": result, "error": error,
         "example": IMPORT_EXAMPLE,
         "items_json": json.dumps(result.items()) if result else "[]",
+        "ocr_ready": ocr_ready, "ocr_message": ocr_message, "photo_results": photo_results,
+        "max_photos": ocr.MAX_PHOTOS,
     })
 
 
@@ -293,12 +336,96 @@ def _boards(deck):
     return [(k, label) for k, label in DeckCard.BOARD_CHOICES if k in wanted or k in used]
 
 
-SINGLETON_RULE = "Commander decks allow one copy of each card, except basic lands."
+class RuleError(Exception):
+    """A deck change the format's rules don't allow. The message is shown to the user."""
 
 
-def _singleton_applies(deck, card):
-    """True when this deck's format allows only one copy of this card."""
-    return deckrules.enforces_singleton(deck.format) and not deckrules.copy_limit_exempt(card.type_line, card.oracle_text)
+def _rules_dict(card, qty=1):
+    return {"name": card.name, "type_line": card.type_line, "oracle_text": card.oracle_text,
+            "quantity": qty, "details_loaded": card.details_loaded, "color_identity": card.color_identity}
+
+
+def _copy_limit(deck, card):
+    return deckrules.copy_limit(deck.format, card.type_line, card.oracle_text, card.legalities)
+
+
+def _limit_text(deck, card, limit):
+    if (card.legalities or {}).get(deck.format) == "restricted":
+        return f"{card.name} is restricted in {deck.get_format_display()}: one copy only."
+    if deck.format == "commander" and limit == 1:
+        return "Commander decks allow one copy of each card, except basic lands."
+    return f"{deck.get_format_display()} decks allow up to {limit} copies of {card.name}."
+
+
+def _color_words(letters):
+    return "/".join(c for c in "WUBRG" if c in letters) or "colorless"
+
+
+def check_deck_rules(deck, card, board, qty, entry=None):
+    """Apply the deck format's rules to adding `qty` of `card` to `board`, or to editing `entry`.
+
+    Returns (allowed_qty, note). Raises RuleError when the change isn't allowed at all.
+    """
+    others = DeckCard.objects.filter(deck=deck).select_related("card")
+    if entry is not None:
+        others = others.exclude(pk=entry.pk)
+    others = list(others)
+    note = ""
+
+    # Banned or not legal in this format (checked when a card first goes in).
+    if entry is None:
+        problem = deckrules.legality_problem(deck.format, card.name, card.legalities)
+        if problem:
+            raise RuleError(problem)
+
+    if deck.format == "commander":
+        commanders = [o for o in others if o.board == "commander"]
+        if board == "commander":
+            candidate = [_rules_dict(o.card) for o in commanders] + [_rules_dict(card)]
+            if len(candidate) > 2:
+                raise RuleError("This deck already has two commanders. Remove one first.")
+            if len(candidate) == 1 and deckrules.is_background(candidate[0]):
+                note = " Now add a commander that says \"Choose a Background\"."
+            else:
+                problem = deckrules.commander_problem(candidate)
+                if problem:
+                    raise RuleError(problem)
+            if qty > 1:
+                qty, note = 1, " A deck has one copy of its commander."
+        elif commanders:
+            allowed = set("".join(o.card.color_identity for o in commanders))
+            outside = set(card.color_identity) - allowed
+            if outside:
+                raise RuleError(
+                    f"{card.name} is {_color_words(card.color_identity)}, which is outside your commander's "
+                    f"colors ({_color_words(allowed)}). Commander decks can only use cards within the commander's color identity."
+                )
+
+    limit = _copy_limit(deck, card)
+    if limit is not None:
+        used = sum(o.quantity for o in others if o.card.name == card.name)
+        room = limit - used
+        if room <= 0:
+            raise RuleError(f"This deck already has {used} {card.name}. {_limit_text(deck, card, limit)}")
+        if qty > room:
+            qty, note = room, f" {_limit_text(deck, card, limit)}"
+    return qty, note
+
+
+def _library_status(deck, card, name_counts, commander_colors, has_commander):
+    """For the library panel: (reason the card can't be added or None, most copies the rules allow or None)."""
+    status = (card.legalities or {}).get(deck.format)
+    if deck.format != "casual" and status in ("banned", "not_legal"):
+        return ("Banned in " if status == "banned" else "Not legal in ") + deck.get_format_display(), 0
+    if deck.format == "commander" and has_commander and set(card.color_identity) - set(commander_colors):
+        return "Outside your commander's colors", 0
+    limit = _copy_limit(deck, card)
+    if limit is None:
+        return None, None
+    room = limit - name_counts.get(card.name, 0)
+    if room <= 0:
+        return ("In deck · one copy allowed" if limit == 1 else f"{limit} of {limit} allowed in deck"), 0
+    return None, room
 
 
 def _board_from(deck, value):
@@ -318,7 +445,7 @@ def _deck_entries(deck, owned):
             "legalities": c.legalities or {}, "details_loaded": c.details_loaded,
             "price": _f(c.best_price), "owned": owned.get(c.id, 0), "is_basic": c.is_basic_land,
             "scryfall_uri": c.scryfall_uri, "image_url": c.image_url,
-            "singleton": _singleton_applies(deck, c),
+            "limit": _copy_limit(deck, c),
         })
     return rows
 
@@ -381,16 +508,19 @@ def deck_detail(request, pk):
     for e in entries:
         in_deck[e["card_id"]] = in_deck.get(e["card_id"], 0) + e["quantity"]
     matches = library.count()
-    names_in_deck = {e["name"] for e in entries}
+    name_counts = {}
+    for e in entries:
+        name_counts[e["name"]] = name_counts.get(e["name"], 0) + e["quantity"]
     results = []
     for card in library.order_by("name", "set_code")[:60]:
         have = owned.get(card.id, 0)
         used = in_deck.get(card.id, 0)
-        singleton = _singleton_applies(deck, card)
+        free = max(0, have - used)
+        blocked, room = _library_status(deck, card, name_counts, commander_colors, has_commander)
+        most = room if card.is_basic_land else (free if room is None else min(free, room))
         results.append({
-            "card": card, "owned": have, "used": used, "free": max(0, have - used),
-            "singleton": singleton,
-            "blocked": singleton and card.name in names_in_deck,  # Commander: already has a copy
+            "card": card, "owned": have, "used": used, "free": free,
+            "blocked": blocked, "max_add": most, "limit": _copy_limit(deck, card),
         })
 
     boards = _boards(deck)
@@ -412,16 +542,11 @@ def deck_add(request, pk):
     qty = max(1, _positive_int(request.POST.get("quantity"), 1))
     back = reverse("collection:deck", args=[deck.pk])
 
-    note = ""
-    if _singleton_applies(deck, card):
-        # Commander: one copy per card name, counting every printing and section.
-        existing = DeckCard.objects.filter(deck=deck, card__name=card.name).first()
-        if existing:
-            messages.error(request, f"{card.name} is already in this deck ({existing.get_board_display().lower()}). "
-                                    f"{SINGLETON_RULE}")
-            return _back(request, back)
-        if qty > 1:
-            qty, note = 1, f" {SINGLETON_RULE}"
+    try:
+        qty, note = check_deck_rules(deck, card, board, qty)
+    except RuleError as exc:
+        messages.error(request, str(exc))
+        return _back(request, back)
 
     if not card.is_basic_land:
         owned = _sum_quantity(CollectionItem.objects.filter(card=card))
@@ -458,10 +583,11 @@ def deck_entry_update(request, pk):
         deck.save(update_fields=["updated_at"])
         return _back(request, back)
 
-    note = ""
-    singleton = _singleton_applies(deck, card)
-    if singleton and qty > 1:
-        qty, note = 1, f" {SINGLETON_RULE}"
+    try:
+        qty, note = check_deck_rules(deck, card, board, qty, entry=entry)
+    except RuleError as exc:
+        messages.error(request, str(exc))
+        return _back(request, back)
 
     if not card.is_basic_land:
         owned = _sum_quantity(CollectionItem.objects.filter(card=card))
@@ -477,7 +603,7 @@ def deck_entry_update(request, pk):
     with transaction.atomic():
         target = DeckCard.objects.filter(deck=deck, card=card, board=board).exclude(pk=entry.pk).first()
         if target:  # moving onto a section that already has this card: merge them
-            target.quantity = 1 if singleton else target.quantity + qty
+            target.quantity += qty  # check_deck_rules already counted target's copies
             target.save()
             entry.delete()
         else:
@@ -498,6 +624,10 @@ def deck_add_basics(request, pk):
             continue
         try:
             card = services.basic_land(name)
+            check_deck_rules(deck, card, "main", n)  # e.g. Islands in a mono-black Commander deck
+        except RuleError as exc:
+            messages.error(request, str(exc))
+            continue
         except scryfall.ScryfallError as exc:
             messages.error(request, f"Couldn't get {name} from Scryfall. {exc}")
             continue
