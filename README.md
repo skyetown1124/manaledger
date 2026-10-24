@@ -6,7 +6,22 @@ You add the exact printings you own, it pulls current prices from
 dashboard shows your total value, your most valuable cards, and how the
 value changes over time.
 
-## Run it
+## Run it in your browser (GitHub Codespaces)
+
+No installs needed:
+
+1. On the repository page, click the green **Code** button, open the
+   **Codespaces** tab, and click **Create codespace on main**.
+2. Wait a minute or two while it installs Django and sets up the database.
+3. The app starts on its own and opens in a new tab. If it doesn't, open the
+   **Ports** tab at the bottom and click the globe icon next to port 8000.
+
+Your collection is saved inside that codespace. Stop it when you're done
+(github.com/codespaces → … → Stop) and reopen it later to pick up where you
+left off. If you reopen it and the app isn't running, type
+`python manage.py runserver 0.0.0.0:8000` in the terminal.
+
+## Run it on your computer
 
 You need Python 3.10 or newer.
 

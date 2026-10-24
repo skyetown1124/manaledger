@@ -1,4 +1,5 @@
 """Settings for the Mana Ledger project (local development)."""
+import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -7,6 +8,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = "dev-only-change-me-mana-ledger"
 DEBUG = True
 ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
+CSRF_TRUSTED_ORIGINS = []
+
+# GitHub Codespaces opens the app at https://<codespace-name>-8000.app.github.dev,
+# so allow that address (and let forms post from it) when running there.
+if os.environ.get("CODESPACES"):
+    ALLOWED_HOSTS.append(".app.github.dev")
+    CSRF_TRUSTED_ORIGINS.append("https://*.app.github.dev")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
