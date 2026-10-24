@@ -4,7 +4,13 @@ from unittest import mock
 from django.test import TestCase
 from django.urls import reverse
 
-from . import decks, scryfall, search
+from io import StringIO
+from pathlib import Path
+import tempfile
+
+from django.core.management import call_command
+
+from . import decks, importer, scryfall, search
 from .models import Card, CollectionItem, Deck, DeckCard
 
 LEGAL_ALL = {f: "legal" for f in ("commander", "standard", "pioneer", "modern", "legacy", "vintage", "pauper")}
@@ -233,3 +239,147 @@ class DeckViewTests(TestCase):
         self.assertNotContains(page, "Lightning Bolt</a>")  # red card hidden for a mono-black commander
         page = self.client.get(reverse("collection:deck", args=[deck.pk]) + "?fit=0")
         self.assertContains(page, "Lightning Bolt</a>")
+
+
+# ------------------------------------------------------------------ Import
+
+def fake_card(name, set_code, number, finishes=("nonfoil",), usd="1.00", foil=None):
+    from decimal import Decimal
+    return {
+        "scryfall_id": f"{set_code}-{number}", "name": name, "set_code": set_code, "set_name": set_code.upper() + " set",
+        "collector_number": number, "rarity": "common", "colors": "", "type_line": "Instant", "released_at": None,
+        "image_url": "", "scryfall_uri": "", "usd": Decimal(usd) if usd else None,
+        "usd_foil": Decimal(foil) if foil else None, "usd_etched": None, "mana_cost": "{R}", "cmc": 1.0,
+        "oracle_text": "", "keywords": "", "power": "", "toughness": "", "loyalty": "", "color_identity": "",
+        "legalities": {}, "finishes": list(finishes),
+    }
+
+
+CATALOG = [
+    fake_card("Lightning Bolt", "2xm", "117", usd="1.85"),
+    fake_card("Lightning Bolt", "m10", "146", usd="2.50"),
+    fake_card("Sol Ring", "cmm", "410", finishes=("nonfoil", "foil"), usd="1.20", foil="6.20"),
+    fake_card("Delver of Secrets // Insectile Aberration", "isd", "51", usd="0.30"),
+    fake_card("Counterspell", "mh2", "267", usd="1.20"),
+]
+
+
+def fake_lookup(identifiers):
+    """Behaves like scryfall.lookup against a tiny catalog."""
+    found, missing = [], []
+    for ident in identifiers:
+        hit = None
+        for c in CATALOG:
+            if "collector_number" in ident:
+                ok = c["set_code"] == ident["set"] and c["collector_number"] == ident["collector_number"]
+            elif "set" in ident:
+                ok = c["set_code"] == ident["set"] and importer.names_match(ident["name"], c["name"])
+            else:
+                ok = importer.names_match(ident["name"], c["name"])
+            if ok:
+                hit = c
+                break
+        (found if hit else missing).append(hit or ident)
+    return found, missing
+
+
+def fake_get_many(ids):
+    return [c for c in CATALOG if c["scryfall_id"] in ids], []
+
+
+class ImportParseTests(TestCase):
+    def test_line_formats(self):
+        lines, problems = importer.parse_lines(
+            "Deck\n"
+            "4 Lightning Bolt (2XM) 117\n"
+            "4x Counterspell [MH2]\n"
+            "Sol Ring\n"
+            "1 Sol Ring (CMM) 410 *F*\n"
+            "2 Sol Ring (CMM) 410 foil\n"
+            "1 Sol Ring (CMM) 410 *E*\n"
+            "# a comment\n"
+            "\n"
+            "Sideboard\n"
+            "0 Lightning Bolt\n"
+        )
+        got = [(l.quantity, l.name, l.set_code, l.collector_number, l.finish) for l in lines]
+        self.assertEqual(got, [
+            (4, "Lightning Bolt", "2xm", "117", "nonfoil"),
+            (4, "Counterspell", "mh2", "", "nonfoil"),
+            (1, "Sol Ring", "", "", "nonfoil"),
+            (1, "Sol Ring", "cmm", "410", "foil"),
+            (2, "Sol Ring", "cmm", "410", "foil"),
+            (1, "Sol Ring", "cmm", "410", "etched"),
+        ])
+        self.assertEqual([p.number for p in problems], [11])  # quantity 0
+
+    def test_names_match_handles_faces_and_apostrophes(self):
+        self.assertTrue(importer.names_match("delver of secrets", "Delver of Secrets // Insectile Aberration"))
+        self.assertTrue(importer.names_match("Urza’s Saga", "Urza's Saga"))
+        self.assertFalse(importer.names_match("Delver", "Delver of Secrets // Insectile Aberration"))
+
+
+class ImportResolveTests(TestCase):
+    def test_matches_problems_and_merging(self):
+        result = importer.resolve(
+            "4 Lightning Bolt (2XM) 117\n"
+            "1 Lightning Bolt (M10)\n"
+            "1 Delver of Secrets\n"
+            "2 Lightning Bolt (2XM) 117\n"
+            "1 Counterspell (2XM) 117\n"        # wrong name for that number
+            "1 Lightning Blot\n"                # typo
+            "1 Sol Ring (CMM) 410 *F*\n"
+            "1 Counterspell (MH2) 267 *F*\n",   # no foil printing in the catalog
+            fake_lookup,
+        )
+        self.assertEqual([p.number for p in result.problems], [5, 6])
+        self.assertIn("is Lightning Bolt, not \"Counterspell\"", result.problems[0].message)
+        self.assertIn("no card named \"Lightning Blot\"", result.problems[1].message)
+
+        by_line = {m.line.number: m for m in result.matches}
+        self.assertEqual(by_line[2].card["collector_number"], "146")
+        self.assertEqual(by_line[3].card["name"], "Delver of Secrets // Insectile Aberration")
+        self.assertEqual((by_line[7].finish, str(by_line[7].price)), ("foil", "6.20"))
+        self.assertEqual(by_line[8].finish, "nonfoil")
+        self.assertIn("no foil version", by_line[8].note)
+
+        items = {(i["id"], i["finish"]): i["quantity"] for i in result.items()}
+        self.assertEqual(items[("2xm-117", "nonfoil")], 6)
+        self.assertEqual(result.copies, 10)  # 4 + 1 + 1 + 2 + 1 + 1
+
+
+@mock.patch.object(scryfall, "lookup", fake_lookup)
+@mock.patch.object(scryfall, "get_many", fake_get_many)
+class ImportViewTests(TestCase):
+    def test_check_then_add(self):
+        url = reverse("collection:import")
+        self.assertEqual(self.client.get(url).status_code, 200)
+
+        page = self.client.post(url, {"action": "check", "cards": "4 Lightning Bolt (2XM) 117\n1 Sol Ring (CMM) 410 *F*\nNope Card"})
+        self.assertContains(page, "Lines to fix (1)")
+        self.assertContains(page, "Add 5 cards to my library")
+        self.assertEqual(CollectionItem.objects.count(), 0)  # checking adds nothing
+
+        items = page.context["items_json"]
+        done = self.client.post(url, {"action": "add", "items": items})
+        self.assertRedirects(done, reverse("collection:cards"))
+        self.assertEqual(CollectionItem.objects.get(card__scryfall_id="2xm-117").quantity, 4)
+        self.assertEqual(CollectionItem.objects.get(card__scryfall_id="cmm-410", finish="foil").quantity, 1)
+
+        self.client.post(url, {"action": "add", "items": items})  # importing again adds more copies
+        self.assertEqual(CollectionItem.objects.get(card__scryfall_id="2xm-117").quantity, 8)
+
+    def test_bad_items_are_rejected(self):
+        self.client.post(reverse("collection:import"), {"action": "add", "items": "not json"})
+        self.assertEqual(CollectionItem.objects.count(), 0)
+
+    def test_command(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "cards.txt"
+            path.write_text("4 Lightning Bolt (2XM) 117\n2 Counterspell\n", encoding="utf-8")
+            out = StringIO()
+            call_command("import_cards", str(path), "--check", stdout=out)
+            self.assertIn("Nothing was added", out.getvalue())
+            self.assertEqual(CollectionItem.objects.count(), 0)
+            call_command("import_cards", str(path), stdout=StringIO())
+            self.assertEqual(sum(CollectionItem.objects.values_list("quantity", flat=True)), 6)

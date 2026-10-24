@@ -11,6 +11,7 @@ urlpatterns = [
     path("cards/<int:pk>/delete/", views.item_delete, name="item_delete"),
     path("add/", views.add_cards, name="add"),
     path("add/save/", views.add_card, name="add_card"),
+    path("import/", views.import_cards, name="import"),
     path("decks/", views.deck_list, name="decks"),
     path("decks/new/", views.deck_create, name="deck_create"),
     path("decks/<int:pk>/", views.deck_detail, name="deck"),

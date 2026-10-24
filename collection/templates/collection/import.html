@@ -1,0 +1,96 @@
+{% extends "collection/base.html" %}
+{% load money cards %}
+{% block title %}Import · Mana Ledger{% endblock %}
+{% block heading %}Import Cards{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <div class="section-head"><span>Paste a card list</span></div>
+  <form method="post" class="import-form">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="check">
+    <label class="sr" for="import-cards">Card list, one card per line</label>
+    <textarea id="import-cards" name="cards" rows="12" class="export" placeholder="{{ example }}" required>{{ text }}</textarea>
+    <div class="row-actions">
+      <button type="submit" class="btn primary">Check list</button>
+      <span class="small muted">Nothing is added until you've seen the check and press Add.</span>
+    </div>
+  </form>
+
+  <details class="search-help"{% if not text %} open{% endif %}>
+    <summary>Line format</summary>
+    <p class="note">One card per line. This is the same format MTG Arena, Moxfield and Archidekt export, so you can paste a list from those too.</p>
+    <div class="table-wrap">
+      <table class="data help-table">
+        <thead><tr><th>Line</th><th>Adds</th></tr></thead>
+        <tbody>
+          <tr><td><code>4 Lightning Bolt (2XM) 117</code></td><td>4 copies of that exact printing (set code and collector number)</td></tr>
+          <tr><td><code>4x Lightning Bolt (2XM)</code></td><td>4 copies from that set</td></tr>
+          <tr><td><code>Lightning Bolt</code></td><td>1 copy of Scryfall's default printing</td></tr>
+          <tr><td><code>1 Sol Ring (CMM) 410 *F*</code></td><td>A foil copy. Use <code>*E*</code> or <code>etched</code> for etched foil; <code>foil</code> also works.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">The set code and collector number are printed in the bottom-left corner of cards from about 2020 on, for example <code>DMU · 107</code>. Blank lines, section headers like "Sideboard", and lines starting with <code>#</code> are skipped.</p>
+  </details>
+
+  {% if error %}<div class="message error">{{ error }}</div>{% endif %}
+</section>
+
+{% if result %}
+<section class="panel">
+  <div class="section-head">
+    <span>Check results</span>
+    <span class="spacer"></span>
+    <span class="summary">{{ result.copies }} card{{ result.copies|pluralize }} ready · <strong>{{ result.total_value|money }}</strong>{% if result.problems %} · <span class="down">{{ result.problems|length }} line{{ result.problems|length|pluralize }} to fix</span>{% endif %}</span>
+  </div>
+
+  {% if result.problems %}
+    <h4 class="group-title">Lines to fix ({{ result.problems|length }})</h4>
+    <p class="note">These lines will be skipped. Fix them in the list above and press <strong>Check list</strong> again, or add the rest now and deal with them later.</p>
+    <ul class="problems">
+      {% for p in result.problems %}
+        <li>
+          {% if p.number %}<span class="line-no">Line {{ p.number }}</span>{% endif %}
+          {% if p.raw %}<code>{{ p.raw }}</code>{% endif %}
+          <div class="small">{{ p.message }}</div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  {% if result.matches %}
+    <h4 class="group-title">Ready to add ({{ result.matches|length }} line{{ result.matches|length|pluralize }})</h4>
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>Line</th><th>Card</th><th>Printing</th><th>Finish</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Value</th></tr></thead>
+        <tbody>
+          {% for m in result.matches %}
+            <tr>
+              <td class="muted">{{ m.line.number }}</td>
+              <td class="card-cell">
+                <div class="card-name"><a href="{{ m.card.scryfall_uri }}" target="_blank" rel="noopener">{{ m.card.name }}</a> {{ m.card.mana_cost|mana }}</div>
+                <div class="muted small">{{ m.card.type_line }}</div>
+                {% if m.note %}<div class="small" style="color: var(--gold)">{{ m.note }}</div>{% endif %}
+              </td>
+              <td>{{ m.card.set_name }}<div class="muted small">{{ m.card.set_code|upper }} #{{ m.card.collector_number }}</div></td>
+              <td>{% if m.finish == "nonfoil" %}Non-foil{% elif m.finish == "foil" %}Foil{% else %}Etched{% endif %}</td>
+              <td class="num">{{ m.line.quantity }}</td>
+              <td class="num">{{ m.price|money }}</td>
+              <td class="num strong">{{ m.value|money }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <form method="post" class="row-actions confirm-import">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="add">
+      <input type="hidden" name="items" value="{{ items_json }}">
+      <button type="submit" class="btn primary">Add {{ result.copies }} card{{ result.copies|pluralize }} to my library</button>
+      <span class="small muted">Cards you already own get the new copies added to their quantity.</span>
+    </form>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

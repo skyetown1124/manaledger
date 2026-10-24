@@ -70,6 +70,33 @@ Open http://127.0.0.1:8000/ and use **Add Cards** to search for your first card.
   the "value by day" chart, so the history grows the more often you refresh.
 - **Light mode** switches themes and remembers your choice in this browser.
 
+## Importing a card list
+
+The **Import** tab adds many cards at once. Paste one card per line and press
+**Check list**: every line is looked up on Scryfall and you see what matched,
+with prices, plus any lines that need fixing. Nothing is added until you press
+**Add to my library**.
+
+```
+4 Lightning Bolt (2XM) 117      exact printing: set code and collector number
+4x Lightning Bolt (2XM)         a printing from that set
+Lightning Bolt                  1 copy of Scryfall's default printing
+1 Sol Ring (CMM) 410 *F*        foil (*E* or "etched" for etched foil)
+```
+
+This is the format MTG Arena, Moxfield and Archidekt export, so lists from
+those work as they are. On cards printed since about 2020, the set code and
+collector number are in the bottom-left corner (for example `DMU · 107`). If a
+line's number belongs to a different card than the name says, the check flags
+it instead of guessing.
+
+From the terminal, the same thing works with a text file:
+
+```bash
+python manage.py import_cards my-cards.txt --check   # match only, add nothing
+python manage.py import_cards my-cards.txt
+```
+
 ## Searching your cards
 
 Plain words match a card's name, type line or rules text. Add filters with
@@ -124,6 +151,7 @@ python manage.py refresh_prices
 | `collection/models.py` | `Card` (one printing, with its rules text), `CollectionItem` (copies you own, per finish), `Deck` and `DeckCard` (a deck and the cards in it), `PriceSnapshot` (a card's price on one day), `CollectionSnapshot` (your total on one day) |
 | `collection/scryfall.py` | Scryfall client: search, autocomplete, batch lookups of 75 cards per request, polite rate limiting and headers |
 | `collection/services.py` | Saving cards, adding to the collection, refreshing prices, recording snapshots |
+| `collection/importer.py` | Reads a pasted card list and matches each line to a Scryfall printing |
 | `collection/search.py` | Turns a search like `t:creature mv<=3` into a database filter, plus a plain-English summary |
 | `collection/decks.py` | Deck rules and stats: format checks, mana curve, colors, export text (plain Python, no database calls) |
 | `collection/stats.py` | All dashboard math, in plain Python (no database calls), so it's easy to test |

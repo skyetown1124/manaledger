@@ -49,6 +49,10 @@
         <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 8v8M8 12h8" stroke="currentColor" stroke-width="2"/></svg>
         Add Cards
       </a>
+      <a href="{% url 'collection:import' %}" class="tab {% if active_tab == 'import' %}active{% endif %}">
+        <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 19h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Import
+      </a>
       <a href="{% url 'collection:decks' %}" class="tab {% if active_tab == 'decks' %}active{% endif %}">
         <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><rect x="7" y="3" width="11" height="15" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 7v12a2 2 0 0 0 2 2h9" fill="none" stroke="currentColor" stroke-width="2"/></svg>
         Decks

@@ -87,18 +87,27 @@ def named(name):
     return parse_card(data)
 
 
-def get_many(scryfall_ids):
-    """Fetch many cards by id, 75 per request. Returns (cards, missing_ids)."""
+def lookup(identifiers):
+    """Fetch cards for Scryfall identifiers, 75 per request.
+
+    Each identifier is a dict such as {"id": ...}, {"name": ...},
+    {"name": ..., "set": ...} or {"set": ..., "collector_number": ...}.
+    Returns (cards, not_found_identifiers).
+    """
     cards, missing = [], []
-    ids = list(scryfall_ids)
-    for start in range(0, len(ids), COLLECTION_BATCH):
-        batch = ids[start:start + COLLECTION_BATCH]
-        data = _request("POST", "/cards/collection", json={
-            "identifiers": [{"id": i} for i in batch],
-        }) or {}
+    identifiers = list(identifiers)
+    for start in range(0, len(identifiers), COLLECTION_BATCH):
+        batch = identifiers[start:start + COLLECTION_BATCH]
+        data = _request("POST", "/cards/collection", json={"identifiers": batch}) or {}
         cards += [parse_card(c) for c in data.get("data", [])]
-        missing += [n.get("id") for n in data.get("not_found", [])]
+        missing += data.get("not_found", [])
     return cards, missing
+
+
+def get_many(scryfall_ids):
+    """Fetch many cards by id. Returns (cards, missing_ids)."""
+    cards, missing = lookup([{"id": i} for i in scryfall_ids])
+    return cards, [m.get("id") for m in missing]
 
 
 def _price(value):

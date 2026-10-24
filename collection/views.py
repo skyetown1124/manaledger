@@ -1,3 +1,4 @@
+import json
 from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
@@ -11,7 +12,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from . import decks as deckrules
-from . import scryfall, search, services
+from . import importer, scryfall, search, services
 from .models import Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, PriceSnapshot
 from .stats import build_dashboard
 
@@ -201,6 +202,53 @@ def add_card(request):
         count = qty if created else item.quantity
         messages.success(request, f"{verb} {count} x {item.card.name} ({item.card.set_code.upper()}, {item.get_finish_display().lower()}).")
     return _back(request, "collection:add")
+
+
+IMPORT_EXAMPLE = """4 Lightning Bolt (2XM) 117
+1 Sheoldred, the Apocalypse (DMU) 107
+1 Sol Ring (CMM) 410 *F*
+2 Counterspell
+"""
+
+
+def import_cards(request):
+    """Paste a card list -> Check list (preview) -> Add to library."""
+    text = request.POST.get("cards", "") if request.method == "POST" else ""
+    action = request.POST.get("action", "")
+    result, error = None, None
+
+    if request.method == "POST" and action == "add":
+        try:
+            items = json.loads(request.POST.get("items", "[]"))
+            assert isinstance(items, list) and all({"id", "finish", "quantity"} <= set(i) for i in items)
+        except (ValueError, AssertionError):
+            messages.error(request, "That import couldn't be read. Check the list again and press Add.")
+            return redirect("collection:import")
+        try:
+            summary = services.import_items(items)
+        except scryfall.ScryfallError as exc:
+            error = f"Nothing was added. {exc}"
+        else:
+            msg = f"Added {summary['copies']} cards ({summary['cards']} printings) to your library."
+            if summary["missing"]:
+                msg += f" Scryfall couldn't find {len(summary['missing'])} of them this time."
+            messages.success(request, msg)
+            return redirect("collection:cards")
+
+    elif request.method == "POST":
+        if not text.strip():
+            error = "Paste at least one card, one per line."
+        else:
+            try:
+                result = importer.resolve(text, scryfall.lookup)
+            except scryfall.ScryfallError as exc:
+                error = f"Couldn't check the list. {exc}"
+
+    return render(request, "collection/import.html", {
+        "active_tab": "import", "text": text, "result": result, "error": error,
+        "example": IMPORT_EXAMPLE,
+        "items_json": json.dumps(result.items()) if result else "[]",
+    })
 
 
 @require_POST

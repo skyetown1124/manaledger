@@ -63,6 +63,35 @@ def add_to_collection(scryfall_id, finish, quantity, purchase_price=None):
     return item, created
 
 
+def import_items(items):
+    """Add checked import rows [{id, finish, quantity}] to the collection.
+
+    Fetches every card again in batches of 75 (so prices are current) and
+    returns {"cards": printings added, "copies": copies added, "missing": [ids]}.
+    """
+    wanted = {}
+    for row in items:
+        finish = row["finish"] if row["finish"] in dict(CollectionItem.FINISH_CHOICES) else "nonfoil"
+        qty = max(1, min(999, int(row["quantity"])))
+        wanted.setdefault(row["id"], []).append((finish, qty))
+    fresh, missing = scryfall.get_many(list(wanted))
+
+    copies = printings = 0
+    with transaction.atomic():
+        for data in fresh:
+            card = save_card(data)
+            for finish, qty in wanted.get(data["scryfall_id"], []):
+                item, created = CollectionItem.objects.get_or_create(
+                    card=card, finish=finish, defaults={"quantity": qty})
+                if not created:
+                    item.quantity += qty
+                    item.save()
+                copies += qty
+                printings += 1
+        record_collection_value()
+    return {"cards": printings, "copies": copies, "missing": missing}
+
+
 def basic_land(name):
     """A Card for a basic land: a printing already saved, or Scryfall's default one."""
     card = Card.objects.filter(name=name, type_line__contains="Basic").order_by("-released_at").first()
