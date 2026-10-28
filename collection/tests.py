@@ -788,3 +788,37 @@ class PhotoUploadViewTests(TestCase):
         page = self.client.get(reverse("collection:import"))
         self.assertContains(page, "Photo import needs the free Tesseract OCR program.")
         self.assertNotContains(page, 'id="photo-form"')
+
+
+# ------------------------------------------------------------------ Playtest
+
+class PlaytestViewTests(TestCase):
+    def test_deck_data_for_the_table(self):
+        commander = make_card("Sheoldred", colors="B", color_identity="B", type_line="Legendary Creature — Praetor",
+                              image_url="https://cards.scryfall.io/normal/front/x.jpg")
+        swamp = make_card("Swamp", type_line="Basic Land — Swamp")
+        push = make_card("Fatal Push", type_line="Instant")
+        side = make_card("Duress", type_line="Sorcery")
+        deck = Deck.objects.create(name="Test", format="commander")
+        DeckCard.objects.create(deck=deck, card=commander, board="commander")
+        DeckCard.objects.create(deck=deck, card=swamp, board="main", quantity=30)
+        DeckCard.objects.create(deck=deck, card=push, board="main")
+        DeckCard.objects.create(deck=deck, card=side, board="side")
+
+        page = self.client.get(reverse("collection:deck_playtest", args=[deck.pk]))
+        self.assertEqual(page.status_code, 200)
+        data = page.context["playtest"]
+        self.assertEqual(len(data["cards"]), 31)            # one entry per copy, sideboard left out
+        self.assertEqual([c["name"] for c in data["commanders"]], ["Sheoldred"])
+        self.assertTrue(data["commanders"][0]["commander"])
+        self.assertEqual((data["life"], data["freeMulligan"]), (40, True))
+        self.assertContains(page, 'id="playtest-data"')
+        self.assertContains(page, "playtest-engine.js")
+
+        self.assertContains(self.client.get(reverse("collection:deck", args=[deck.pk])), "Playtest")
+
+    def test_empty_deck_explains_what_to_do(self):
+        deck = Deck.objects.create(name="Empty", format="modern")
+        page = self.client.get(reverse("collection:deck_playtest", args=[deck.pk]))
+        self.assertContains(page, "Nothing to shuffle yet")
+        self.assertEqual(page.context["playtest"]["life"], 20)

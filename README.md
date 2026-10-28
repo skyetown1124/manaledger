@@ -82,6 +82,27 @@ Open http://127.0.0.1:8000/ and use **Add Cards** to search for your first card.
   Banned, restricted and legal status comes from Scryfall and updates when you
   press **Refresh prices**.
 
+- **Playtest** (button on each deck page): goldfish the deck like solitaire.
+  - Shuffle and draw 7, then keep or mulligan. Mulligans follow the London
+    rule (draw 7, then put one card on the bottom per mulligan), and the first
+    mulligan in Commander is free. Choose whether you're on the play (no draw
+    on turn 1) or on the draw.
+  - Play turns: **Next turn** untaps and draws. Double-click a card in hand to
+    play it (lands and permanents go to the battlefield, instants and sorceries
+    to the graveyard), and double-click a permanent to tap or untap it. Click
+    any card for more options: discard, exile, return to hand, top or bottom of
+    library, and so on.
+  - Library tools: draw, mill, shuffle, **Look at top…** (scry-style: keep on
+    top in any order, bottom, graveyard or hand), and **Search** (tutor; the
+    library shuffles afterwards). Graveyard and exile can be browsed and cards
+    moved back.
+  - Commander zone with commander tax, a life counter (40 in Commander, 20
+    otherwise), tokens, a count of untapped lands, and a game log.
+  - Keyboard: `D` draw, `N` next turn, `U` untap all, `L` look at the top.
+  - **Opening hand odds**: exact chances of drawing 0–7 lands in your opening
+    hand, of hitting each land drop by turn 6, and of drawing any chosen card by
+    a given turn, on the play or on the draw.
+
   For Commander decks, add your commander first. The library search then shows
   only cards that fit your commander's colors (untick the box to see all).
 - **Dashboard**: total value, value by day with a trend line, value by set,
@@ -179,6 +200,7 @@ load their text.
 
 ```bash
 python manage.py test collection
+node --test "collection/js_tests/*.test.js"   # playtest engine (needs Node.js 18+)
 ```
 
 ## Refresh prices automatically
@@ -208,6 +230,9 @@ python manage.py refresh_prices
 | `collection/decks.py` | Deck rules and stats: format checks, mana curve, colors, export text (plain Python, no database calls) |
 | `collection/stats.py` | All dashboard math, in plain Python (no database calls), so it's easy to test |
 | `collection/views.py` | Dashboard, My Cards, Add Cards, Decks, refresh, and the autocomplete endpoint |
+| `collection/static/collection/playtest-engine.js` | Playtest rules (shuffle, mulligans, zones, turns, odds) as plain functions |
+| `collection/static/collection/playtest.js` | The playtest table: drawing cards, menus, dialogs, keyboard shortcuts |
+| `collection/js_tests/` | Node tests for the playtest engine |
 | `collection/tests.py` | Tests for search, deck rules, Scryfall parsing and the deck pages |
 | `collection/templates/collection/` | `base.html` (header, tabs, footer) and one template per page |
 | `collection/templatetags/` | `money` (dollar formatting) and `cards` (mana symbols, color pips, highlighting) |

@@ -1,0 +1,125 @@
+{% extends "collection/base.html" %}
+{% load static %}
+{% block title %}Playtest {{ deck.name }} · Mana Ledger{% endblock %}
+{% block heading %}{{ deck.name }} <span class="titlebar-sub">Playtest · {{ deck.get_format_display }}</span>{% endblock %}
+
+{% block content %}
+{% if not card_count %}
+  <section class="panel empty">
+    <h2>Nothing to shuffle yet</h2>
+    <p>Add cards to the main deck first, then come back to draw hands and play out turns.</p>
+    <a class="btn primary" href="{% url 'collection:deck' deck.pk %}">Back to the deck</a>
+  </section>
+{% else %}
+
+<section class="panel pt-top">
+  <div class="pt-bar">
+    <div class="pt-stats" aria-live="polite">
+      <div class="pt-stat"><span class="kpi-label">Turn</span><strong id="pt-turn">–</strong></div>
+      <div class="pt-stat pt-life">
+        <span class="kpi-label">Life</span>
+        <div class="pt-life-row">
+          <button type="button" class="btn small" data-act="life" data-n="-1" aria-label="Lose 1 life">−</button>
+          <strong id="pt-life">20</strong>
+          <button type="button" class="btn small" data-act="life" data-n="1" aria-label="Gain 1 life">+</button>
+        </div>
+      </div>
+      <div class="pt-stat"><span class="kpi-label">Library</span><strong id="pt-library-count">0</strong></div>
+      <div class="pt-stat"><span class="kpi-label">Untapped lands</span><strong id="pt-mana">0</strong></div>
+      <div class="pt-stat"><span class="kpi-label">Lands this turn</span><strong id="pt-lands-played">0</strong></div>
+    </div>
+    <div class="pt-actions">
+      <button type="button" class="btn" data-act="draw" title="Shortcut: D">Draw</button>
+      <button type="button" class="btn primary" data-act="next" title="Shortcut: N">Next turn</button>
+      <button type="button" class="btn" data-act="untap" title="Shortcut: U">Untap all</button>
+      <button type="button" class="btn" data-act="look" title="Shortcut: L">Look at top…</button>
+      <button type="button" class="btn" data-act="mill">Mill 1</button>
+      <button type="button" class="btn" data-act="shuffle">Shuffle</button>
+      <button type="button" class="btn ghost" data-act="restart">New game</button>
+    </div>
+  </div>
+  <div id="pt-banner" class="pt-banner"></div>
+  <p class="small muted pt-help">Click a card for its options. Double-click to play a card from your hand or to tap and untap one on the battlefield. Keys: <kbd>D</kbd> draw, <kbd>N</kbd> next turn, <kbd>U</kbd> untap all, <kbd>L</kbd> look at the top cards.</p>
+</section>
+
+<section class="pt-table">
+  <div class="pt-main">
+    <div class="panel pt-zone">
+      <h3>Battlefield</h3>
+      <div id="pt-permanents" class="pt-row" data-empty="Creatures, artifacts and other permanents you play appear here."></div>
+      <h4 class="group-title">Lands</h4>
+      <div id="pt-lands" class="pt-row" data-empty="Lands you play appear here."></div>
+    </div>
+    <div class="panel pt-zone">
+      <h3>Hand <span class="muted" id="pt-hand-count"></span></h3>
+      <div id="pt-hand" class="pt-row pt-hand"></div>
+    </div>
+  </div>
+
+  <aside class="pt-side">
+    <div class="panel pt-zone" id="pt-command-panel">
+      <h3>Command zone</h3>
+      <div id="pt-command" class="pt-row" data-empty="No commander in this deck."></div>
+    </div>
+    <div class="panel pt-piles">
+      <button type="button" class="pt-pile" data-pile="library"><span class="kpi-label">Library</span><strong id="pt-pile-library">0</strong><span class="small muted">Search</span></button>
+      <button type="button" class="pt-pile" data-pile="graveyard"><span class="kpi-label">Graveyard</span><strong id="pt-pile-graveyard">0</strong><span class="small muted">View</span></button>
+      <button type="button" class="pt-pile" data-pile="exile"><span class="kpi-label">Exile</span><strong id="pt-pile-exile">0</strong><span class="small muted">View</span></button>
+    </div>
+    <form class="panel pt-token" id="pt-token-form">
+      <label for="pt-token-name" class="kpi-label">Create tokens</label>
+      <div class="pt-token-row">
+        <input type="text" id="pt-token-name" placeholder="e.g. Treasure, 1/1 Soldier" maxlength="40">
+        <input type="number" id="pt-token-count" value="1" min="1" max="20" class="qty" aria-label="How many tokens">
+        <button type="submit" class="btn small">Create</button>
+      </div>
+    </form>
+    <div class="panel">
+      <h3>Game log</h3>
+      <ol id="pt-log" class="pt-log"></ol>
+    </div>
+  </aside>
+</section>
+
+<section class="panel" id="pt-odds">
+  <div class="section-head">
+    <span>Opening hand odds</span>
+    <span class="spacer"></span>
+    <div class="radios" role="radiogroup" aria-label="Play or draw">
+      <label><input type="radio" name="pt-odds-side" id="pt-odds-play" value="play" checked> On the play</label>
+      <label><input type="radio" name="pt-odds-side" id="pt-odds-draw" value="draw"> On the draw</label>
+    </div>
+  </div>
+  <div class="grid-2 inner">
+    <div>
+      <h3>Lands in your opening 7</h3>
+      <p class="note" id="pt-odds-summary"></p>
+      <table class="data pt-odds-table" id="pt-odds-lands"></table>
+    </div>
+    <div>
+      <h3>Hitting your land drops</h3>
+      <p class="note">Chance you've seen at least one land per turn by that turn, with no mulligan.</p>
+      <table class="data pt-odds-table" id="pt-odds-drops"></table>
+      <h3 class="pt-odds-card-title">Drawing a specific card</h3>
+      <label for="pt-odds-card" class="sr">Card</label>
+      <select id="pt-odds-card"></select>
+      <table class="data pt-odds-table" id="pt-odds-card-table"></table>
+    </div>
+  </div>
+  <p class="note">Exact odds from the deck list (hypergeometric math). Basic and nonbasic lands both count as lands; the commander isn't in the library.</p>
+</section>
+
+<div id="pt-menu" class="pt-menu" role="menu" hidden></div>
+<div id="pt-preview" class="pt-preview" hidden></div>
+<dialog id="pt-dialog" class="pt-dialog"></dialog>
+
+{{ playtest|json_script:"playtest-data" }}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {% if card_count %}
+    <script src="{% static 'collection/playtest-engine.js' %}"></script>
+    <script src="{% static 'collection/playtest.js' %}"></script>
+  {% endif %}
+{% endblock %}

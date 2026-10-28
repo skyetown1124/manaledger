@@ -534,6 +534,33 @@ def deck_detail(request, pk):
     })
 
 
+def deck_playtest(request, pk):
+    """Goldfish the deck: shuffle, draw, mulligan and play turns in the browser."""
+    deck = get_object_or_404(Deck.objects.prefetch_related("entries__card"), pk=pk)
+    cards, commanders = [], []
+    for entry in deck.entries.all():
+        if entry.board == "side":
+            continue
+        c = entry.card
+        data = {
+            "id": c.id, "name": c.name, "mana_cost": c.mana_cost, "cmc": c.cmc,
+            "type_line": c.type_line, "oracle_text": c.oracle_text, "image_url": c.image_url,
+            "power": c.power, "toughness": c.toughness, "loyalty": c.loyalty,
+        }
+        if entry.board == "commander":
+            commanders.append(dict(data, commander=True))
+        else:
+            cards.extend(dict(data) for _ in range(entry.quantity))
+    commander_format = deck.format == "commander"
+    return render(request, "collection/playtest.html", {
+        "active_tab": "decks", "deck": deck, "card_count": len(cards),
+        "playtest": {
+            "deckName": deck.name, "cards": cards, "commanders": commanders,
+            "life": 40 if commander_format else 20, "freeMulligan": commander_format,
+        },
+    })
+
+
 @require_POST
 def deck_add(request, pk):
     deck = get_object_or_404(Deck, pk=pk)

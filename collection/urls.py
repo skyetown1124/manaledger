@@ -16,6 +16,7 @@ urlpatterns = [
     path("decks/new/", views.deck_create, name="deck_create"),
     path("decks/<int:pk>/", views.deck_detail, name="deck"),
     path("decks/<int:pk>/add/", views.deck_add, name="deck_add"),
+    path("decks/<int:pk>/playtest/", views.deck_playtest, name="deck_playtest"),
     path("decks/<int:pk>/basics/", views.deck_add_basics, name="deck_add_basics"),
     path("decks/<int:pk>/settings/", views.deck_update, name="deck_update"),
     path("decks/<int:pk>/delete/", views.deck_delete, name="deck_delete"),
