@@ -1,0 +1,80 @@
+{% extends "collection/base.html" %}
+{% load cards %}
+{% block title %}Rules · Mana Ledger{% endblock %}
+{% block heading %}Comprehensive Rules{% endblock %}
+
+{% block content %}
+{% if not edition %}
+  <section class="panel empty">
+    <h2>Load the rules to search them</h2>
+    <p>The app downloads Wizards' official Comprehensive Rules (about 1 MB) from magic.wizards.com and keeps a copy here, so searching works offline afterwards.</p>
+    <form method="post" action="{% url 'collection:rules_load' %}">
+      {% csrf_token %}
+      <button type="submit" class="btn primary">Download the latest rules</button>
+    </form>
+    <p class="note">From a terminal instead: <code>python manage.py load_rules</code></p>
+  </section>
+{% else %}
+  <section class="panel">
+    <form class="section-head filters" method="get" role="search">
+      <label for="rules-q">Search the rules</label>
+      <input type="search" id="rules-q" name="q" value="{{ q }}" class="wide"
+             placeholder='e.g.  commander damage,  "state-based actions",  ward,  702.19' autofocus>
+      <button type="submit" class="btn primary">Search</button>
+      {% if q %}<a class="btn ghost" href="{% url 'collection:rules' %}">Contents</a>{% endif %}
+      <span class="spacer"></span>
+      <a class="btn" href="{% url 'collection:glossary' %}">Glossary</a>
+    </form>
+    <p class="note">Rules effective {{ edition.effective }} · {{ edition.rule_count }} entries and {{ edition.term_count }} glossary terms.
+      Type a rule number like <code>702.19</code> to jump straight to it. Every word must appear; put phrases in "quotes".</p>
+    <form method="post" action="{% url 'collection:rules_load' %}" class="inline-form">
+      {% csrf_token %}
+      <button type="submit" class="btn small ghost">Check for newer rules</button>
+    </form>
+  </section>
+
+  {% if q %}
+    {% if terms %}
+      <section class="panel">
+        <h3>Glossary</h3>
+        <dl class="glossary-list">
+          {% for t in terms %}
+            <div><dt>{{ t.term|highlight:words }}</dt><dd>{{ t.definition|rule_text:words }}</dd></div>
+          {% endfor %}
+        </dl>
+      </section>
+    {% endif %}
+    <section class="panel">
+      <h3>Rules <span class="muted">({{ total }} match{{ total|pluralize:"es" }}{% if total > hits|length %}, showing the first {{ hits|length }}{% endif %})</span></h3>
+      {% if hits %}
+        <ol class="rule-results">
+          {% for h in hits %}
+            <li>
+              <div class="rule-meta"><a class="rule-number" href="{% url 'collection:rule' h.rule.number %}">{{ h.rule.number }}</a>
+                {% if h.section_title and h.rule.kind != "section" %}<span class="muted small">{{ h.rule.section }}. {{ h.section_title }}</span>{% endif %}</div>
+              <div class="rule-body">{{ h.rule.text|rule_text:words }}</div>
+              {% if h.rule.examples %}<div class="rule-example">{{ h.rule.examples|rule_text:words }}</div>{% endif %}
+            </li>
+          {% endfor %}
+        </ol>
+      {% else %}
+        <p class="muted">No rules contain all of those words. Try fewer words, or a single keyword like "ward".</p>
+      {% endif %}
+    </section>
+  {% else %}
+    <section class="panel">
+      <h3>Contents</h3>
+      <div class="rules-toc">
+        {% for c in chapters %}
+          <div>
+            <h4><a href="{% url 'collection:rule' c.chapter.number %}">{{ c.chapter.number }}. {{ c.chapter.text }}</a></h4>
+            <ul>
+              {% for s in c.sections %}<li><a href="{% url 'collection:rule' s.number %}"><span class="muted">{{ s.number }}.</span> {{ s.text }}</a></li>{% endfor %}
+            </ul>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+{% endif %}
+{% endblock %}

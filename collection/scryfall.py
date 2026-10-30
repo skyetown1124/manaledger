@@ -79,6 +79,12 @@ def get_card(scryfall_id):
     return parse_card(data)
 
 
+def rulings(scryfall_id):
+    """Official rulings for a card: [{"source", "published_at", "comment"}]."""
+    data = _request("GET", f"/cards/{scryfall_id}/rulings")
+    return (data or {}).get("data", [])
+
+
 _sets_cache = None
 
 

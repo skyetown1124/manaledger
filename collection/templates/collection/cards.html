@@ -51,7 +51,7 @@
             <tr>
               <td class="card-cell">
                 <div class="card-name">
-                  <a href="{{ r.card.scryfall_uri }}" target="_blank" rel="noopener">{{ r.card.name }}</a>
+                  <a href="{% url 'collection:card' r.card.pk %}">{{ r.card.name }}</a>
                   {{ r.card.mana_cost|mana }}
                 </div>
                 <div class="muted small">{% if r.card.type_line %}{{ r.card.type_line }} · {% endif %}{{ r.card.set_code|upper }} #{{ r.card.collector_number }}</div>

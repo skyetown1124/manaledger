@@ -1,0 +1,44 @@
+{% extends "collection/base.html" %}
+{% load cards %}
+{% block title %}Rule {{ rule.number }} · Mana Ledger{% endblock %}
+{% block heading %}{{ rule.number }}{% if rule.kind != "rule" %}. {{ rule.text }}{% endif %}{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <nav class="crumbs small" aria-label="Where this rule is">
+    <a href="{% url 'collection:rules' %}">Rules</a>
+    {% if chapter and rule.kind != "chapter" %} › <a href="{% url 'collection:rule' chapter.number %}">{{ chapter.number }}. {{ chapter.text }}</a>{% endif %}
+    {% if section and rule.kind == "rule" %} › <a href="{% url 'collection:rule' section.number %}">{{ section.number }}. {{ section.text }}</a>{% endif %}
+  </nav>
+  <form class="section-head filters" method="get" action="{% url 'collection:rules' %}" role="search">
+    <label for="rules-q">Search</label>
+    <input type="search" id="rules-q" name="q" class="wide" placeholder="Search the rules or type a rule number">
+    <button type="submit" class="btn">Search</button>
+  </form>
+
+  {% if rule.kind == "chapter" %}
+    <ul class="rule-sections">
+      {% for s in children %}<li><a href="{% url 'collection:rule' s.number %}"><span class="muted">{{ s.number }}.</span> {{ s.text }}</a></li>{% endfor %}
+    </ul>
+  {% else %}
+    <ol class="rule-entries">
+      {% for r in children %}
+        <li id="r{{ r.number }}" class="{{ r.kind }}">
+          <a class="rule-number" href="{% if r.kind == 'subrule' %}#r{{ r.number }}{% else %}{% url 'collection:rule' r.number %}{% endif %}">{{ r.number }}</a>
+          <div>
+            <div class="rule-body">{{ r.text|rule_text }}</div>
+            {% if r.examples %}<div class="rule-example">{{ r.examples|rule_text }}</div>{% endif %}
+          </div>
+        </li>
+      {% endfor %}
+    </ol>
+  {% endif %}
+
+  <div class="row-actions rule-nav">
+    {% if previous %}<a class="btn small" href="{% url 'collection:rule' previous %}">← {{ previous }}</a>{% endif %}
+    {% if next %}<a class="btn small" href="{% url 'collection:rule' next %}">{{ next }} →</a>{% endif %}
+    <span class="spacer"></span>
+    {% if edition %}<span class="small muted">Rules effective {{ edition.effective }}</span>{% endif %}
+  </div>
+</section>
+{% endblock %}

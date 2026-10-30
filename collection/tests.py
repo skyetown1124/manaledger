@@ -977,3 +977,173 @@ class BracketPageTests(TestCase):
         from .scryfall import parse_card
         card = parse_card({"id": "x", "name": "Farewell", "game_changer": True, "prices": {}})
         self.assertTrue(card["game_changer"])
+
+
+# ------------------------------------------------------------------ Comprehensive Rules and rulings
+
+from . import rules as rulesmod
+from .models import GlossaryTerm, Rule, Ruling, RulesEdition
+
+SAMPLE_RULES = "\r\n".join([
+    "﻿Magic: The Gathering Comprehensive Rules", " ",
+    "These rules are effective as of September 25, 2026.", " ",
+    "Introduction", " ", "This document is the ultimate authority for Magic.", " ",
+    "Contents", " ",
+    "1. Game Concepts", "100. General", "7. Additional Rules", "702. Keyword Abilities", "Glossary", "Credits", " ",
+    "1. Game Concepts", " ",
+    "100. General", " ",
+    "100.1. These Magic rules apply to any Magic game with two or more players.", " ",
+    "100.1a A two-player game is a game that begins with only two players.", " ",
+    "100.1b A multiplayer game is a game that begins with more than two players. See section 800.", " ",
+    "7. Additional Rules", " ",
+    "702. Keyword Abilities", " ",
+    "702.2. Deathtouch", " ",
+    "702.2a Deathtouch is a static ability.", " ",
+    "702.2b A creature with toughness greater than 0 that's been dealt damage by a source with deathtouch "
+    "since the last time state-based actions were checked is destroyed. See rule 704.5h.", " ",
+    "Example: A 1/1 creature with deathtouch blocks a 5/5 creature. The 5/5 creature is destroyed.", " ",
+    "702.19. Trample", " ",
+    "702.19a Trample is a static ability that modifies the rules for assigning an attacking creature's combat damage.", " ",
+    "Glossary", " ",
+    "Commander", "A designated legendary creature card that leads a Commander deck. See rule 903.3.", " ",
+    "Deathtouch", "A keyword ability that causes damage dealt by an object to be especially effective.",
+    "See rule 702.2.", " ",
+    "Credits", " ", "Magic: The Gathering Original Game Design: Richard Garfield",
+])
+
+
+class RulesParserTests(TestCase):
+    def test_parse(self):
+        parsed = rulesmod.parse(SAMPLE_RULES)
+        self.assertEqual(parsed["effective"], "September 25, 2026")
+        by_number = {r["number"]: r for r in parsed["rules"]}
+        self.assertEqual([r["number"] for r in parsed["rules"]],
+                         ["1", "100", "100.1", "100.1a", "100.1b", "7", "702", "702.2", "702.2a", "702.2b",
+                          "702.19", "702.19a"])     # the contents list isn't counted twice
+        self.assertEqual(by_number["702.2b"]["parent"], "702.2")
+        self.assertEqual(by_number["702.2"]["parent"], "702")
+        self.assertEqual(by_number["702"]["kind"], "section")
+        self.assertEqual(by_number["702.2b"]["section"], "702")
+        self.assertEqual(by_number["702.2b"]["examples"],
+                         ["A 1/1 creature with deathtouch blocks a 5/5 creature. The 5/5 creature is destroyed."])
+        self.assertEqual([g["term"] for g in parsed["glossary"]], ["Commander", "Deathtouch"])
+        self.assertEqual(parsed["glossary"][1]["definition"],
+                         "A keyword ability that causes damage dealt by an object to be especially effective.\nSee rule 702.2.")
+
+    def test_decoding(self):
+        self.assertEqual(rulesmod.decode("﻿rule’s".encode("utf-8")), "rule’s")
+        self.assertEqual(rulesmod.decode("rule’s".encode("cp1252")), "rule’s")
+
+    def test_not_a_rules_file(self):
+        with self.assertRaises(rulesmod.RulesError):
+            rulesmod.parse("Hello\nThis is not the rules.")
+
+    def test_finds_latest_link(self):
+        page = mock.Mock(text='<a href="https://media.wizards.com/2026/downloads/MagicCompRules%2020260925.pdf">PDF</a>'
+                              '<a href="https://media.wizards.com/2026/downloads/MagicCompRules%2020260925.txt">TXT</a>'
+                              '<a href="https://media.wizards.com/2025/downloads/MagicCompRules%2020250919.txt">old</a>')
+        with mock.patch.object(rulesmod, "_get", return_value=page):
+            self.assertEqual(rulesmod.latest_url(),
+                             "https://media.wizards.com/2026/downloads/MagicCompRules%2020260925.txt")
+
+    def test_load_command(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "rules.txt"
+            path.write_bytes(SAMPLE_RULES.encode("utf-8-sig"))
+            out = StringIO()
+            call_command("load_rules", "--file", str(path), stdout=out)
+        self.assertIn("effective September 25, 2026: 12 rules and 2 glossary terms", out.getvalue())
+        self.assertEqual(Rule.objects.count(), 12)
+        call_command("load_rules", "--file", str(path), stdout=StringIO()) if path.exists() else None
+        self.assertEqual(RulesEdition.objects.count(), 1)
+
+
+class RulesPageTests(TestCase):
+    def setUp(self):
+        rulesmod.save(rulesmod.parse(SAMPLE_RULES), "https://example.test/rules.txt")
+
+    def test_contents_and_search(self):
+        page = self.client.get(reverse("collection:rules"))
+        self.assertContains(page, 'href="/rules/702/"')
+        self.assertContains(page, "Keyword Abilities")
+        self.assertContains(page, "effective September 25, 2026")
+
+        page = self.client.get(reverse("collection:rules"), {"q": "deathtouch destroyed"})
+        self.assertEqual(page.context["total"], 1)                      # only 702.2b has both words
+        self.assertContains(page, "<mark>deathtouch</mark>")
+        self.assertContains(page, 'href="/rules/704.5h/"')               # rule references become links
+        self.assertEqual([t.term for t in page.context["terms"]], ["Deathtouch"])
+
+        page = self.client.get(reverse("collection:rules"), {"q": '"static ability"'})
+        self.assertEqual(page.context["total"], 2)
+
+    def test_number_jumps_to_rule(self):
+        self.assertRedirects(self.client.get(reverse("collection:rules"), {"q": "702.2"}),
+                             reverse("collection:rule", args=["702.2"]))
+        self.assertRedirects(self.client.get(reverse("collection:rule", args=["702.2b"])),
+                             reverse("collection:rule", args=["702.2"]) + "#r702.2b", fetch_redirect_response=False)
+
+    def test_rule_section_and_chapter_pages(self):
+        page = self.client.get(reverse("collection:rule", args=["702.2"]))
+        self.assertContains(page, 'id="r702.2b"')
+        self.assertContains(page, "A 1/1 creature with deathtouch")
+        self.assertEqual(page.context["next"], "702.19")
+        section = self.client.get(reverse("collection:rule", args=["702"]))
+        self.assertContains(section, "702.19a")
+        chapter = self.client.get(reverse("collection:rule", args=["7"]))
+        self.assertContains(chapter, "Keyword Abilities")
+
+    def test_missing_rule_and_glossary(self):
+        page = self.client.get(reverse("collection:rule", args=["999.9"]), follow=True)
+        self.assertContains(page, "no rule 999.9")
+        glossary = self.client.get(reverse("collection:glossary"))
+        self.assertContains(glossary, 'id="letter-C"')
+        self.assertContains(glossary, 'href="/rules/903.3/"')
+
+    def test_load_button(self):
+        with mock.patch.object(rulesmod, "load_latest", side_effect=rulesmod.RulesError("Couldn't reach magic.wizards.com.")):
+            page = self.client.post(reverse("collection:rules_load"), follow=True)
+        self.assertContains(page, "The rules weren&#x27;t loaded.")
+
+    def test_empty_state(self):
+        RulesEdition.objects.all().delete()
+        self.assertContains(self.client.get(reverse("collection:rules")), "Download the latest rules")
+
+
+class CardRulingsTests(TestCase):
+    RULINGS = [{"source": "wotc", "published_at": "2022-09-09",
+                "comment": "If Sheoldred leaves the battlefield, its abilities still apply. See rule 603.10."}]
+
+    def setUp(self):
+        self.card = make_card("Sheoldred, the Apocalypse", keywords="Deathtouch",
+                              type_line="Legendary Creature — Phyrexian Praetor", oracle_text="Deathtouch")
+
+    def test_rulings_are_fetched_once_and_cached(self):
+        rulesmod.save(rulesmod.parse(SAMPLE_RULES))
+        url = reverse("collection:card", args=[self.card.pk])
+        with mock.patch.object(scryfall, "rulings", return_value=self.RULINGS) as fetch:
+            page = self.client.get(url)
+            self.client.get(url)                       # fresh: not fetched again
+            self.assertEqual(fetch.call_count, 1)
+            self.client.get(url + "?refresh=1")        # asked to check again
+            self.assertEqual(fetch.call_count, 2)
+        self.assertContains(page, "its abilities still apply")
+        self.assertContains(page, 'href="/rules/603.10/"')
+        self.assertContains(page, "Keyword rules")      # Deathtouch -> 702.2
+        self.assertContains(page, 'href="/rules/702.2/"')
+        self.assertEqual(Ruling.objects.filter(card=self.card).count(), 1)
+
+    def test_scryfall_down(self):
+        with mock.patch.object(scryfall, "rulings", side_effect=scryfall.ScryfallError("Couldn't reach Scryfall.")):
+            page = self.client.get(reverse("collection:card", args=[self.card.pk]))
+        self.assertContains(page, "Couldn't load rulings from Scryfall.")
+
+    def test_card_names_link_to_the_card_page(self):
+        CollectionItem.objects.create(card=self.card, quantity=1)
+        with mock.patch.object(scryfall, "rulings", return_value=[]):
+            self.assertContains(self.client.get(reverse("collection:cards")), f'href="/cards/{self.card.pk}/"')
+            self.assertContains(self.client.get(reverse("collection:card", args=[self.card.pk])), "no official rulings")
+
+    def test_keyword_index(self):
+        rulesmod.save(rulesmod.parse(SAMPLE_RULES))
+        self.assertEqual(rulesmod.keyword_index(), {"deathtouch": "702.2", "trample": "702.19"})

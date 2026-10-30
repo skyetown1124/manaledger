@@ -159,7 +159,7 @@
                   </td>
                   <td class="card-cell">
                     <div class="card-name">
-                      <a href="{{ e.scryfall_uri }}" target="_blank" rel="noopener">{{ e.name }}</a>
+                      <a href="{% url 'collection:card' e.card_id %}">{{ e.name }}</a>
                       {{ e.mana_cost|mana }}
                     </div>
                     <div class="muted small">
@@ -243,7 +243,7 @@
         <li class="{% if r.blocked or r.max_add == 0 %}used-up{% endif %}">
           <div class="lib-card">
             <div class="card-name">
-              <a href="{{ r.card.scryfall_uri }}" target="_blank" rel="noopener">{{ r.card.name }}</a>
+              <a href="{% url 'collection:card' r.card.pk %}">{{ r.card.name }}</a>
               {{ r.card.mana_cost|mana }}
             </div>
             <div class="muted small">{{ r.card.type_line }} · {{ r.card.set_code|upper }}</div>

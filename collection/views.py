@@ -1,9 +1,10 @@
 import json
+import re
 from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -12,8 +13,9 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from . import decks as deckrules
-from . import brackets, importer, ocr, scryfall, search, services, spellbook
-from .models import Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, PriceSnapshot
+from . import brackets, importer, ocr, rules, scryfall, search, services, spellbook
+from .models import (Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, GlossaryTerm, PriceSnapshot,
+                     Rule, RulesEdition)
 from .stats import build_dashboard
 
 BASIC_LANDS = ["Plains", "Island", "Swamp", "Mountain", "Forest", "Wastes"]
@@ -755,3 +757,130 @@ def deck_delete(request, pk):
     deck.delete()
     messages.success(request, f"Deleted {name}. The cards are still in your library.")
     return redirect("collection:decks")
+
+
+# ------------------------------------------------------------------ Rules and rulings
+
+def _search_words(q):
+    """Words and "quoted phrases" from a search box."""
+    return [a or b for a, b in re.findall(r'"([^"]+)"|(\S+)', q) if (a or b).strip()]
+
+
+def rules_page(request):
+    """Comprehensive Rules: contents, plus search across rules and the glossary."""
+    q = request.GET.get("q", "").strip()
+    edition = RulesEdition.objects.first()
+    m = rules.NUMBER_QUERY_RE.match(q) if q else None
+    if m and edition and Rule.objects.filter(number=m.group(1).lower()).exists():
+        return redirect("collection:rule", number=m.group(1).lower())
+
+    words = _search_words(q)
+    hits, terms, total = [], [], 0
+    if words and edition:
+        match = Q()
+        for w in words:
+            match &= Q(text__icontains=w) | Q(examples__icontains=w)
+        found = Rule.objects.filter(match).exclude(kind="chapter")
+        total = found.count()
+        titles = dict(Rule.objects.filter(kind="section").values_list("number", "text"))
+        for rule in found[:80]:
+            hits.append({"rule": rule, "section_title": titles.get(rule.section, "")})
+        term_match = Q()
+        for w in words:
+            term_match &= Q(term__icontains=w) | Q(definition__icontains=w)
+        named = Q(term__iexact=q)
+        for w in words:
+            named |= Q(term__iexact=w)
+        exact = list(GlossaryTerm.objects.filter(named))   # a term you typed by name always shows
+        terms = exact + [t for t in GlossaryTerm.objects.filter(term_match)[:12] if t not in exact]
+
+    chapters = []
+    if edition and not q:
+        sections = {}
+        for s in Rule.objects.filter(kind="section"):
+            sections.setdefault(s.number[0], []).append(s)
+        chapters = [{"chapter": c, "sections": sections.get(c.number, [])} for c in Rule.objects.filter(kind="chapter")]
+
+    return render(request, "collection/rules.html", {
+        "active_tab": "rules", "q": q, "edition": edition, "hits": hits, "total": total,
+        "terms": terms, "words": words, "chapters": chapters,
+    })
+
+
+def rule_detail(request, number):
+    number = number.lower().rstrip(".")
+    rule = Rule.objects.filter(number=number).first()
+    if rule is None:
+        messages.error(request, f"There's no rule {number} in the loaded rules. Try searching instead.")
+        return redirect(reverse("collection:rules") + f"?q={number}")
+    if rule.kind == "subrule":
+        return redirect(reverse("collection:rule", args=[rule.parent]) + f"#r{rule.number}")
+
+    chapter = Rule.objects.filter(kind="chapter", number=rule.number[0]).first()
+    section = Rule.objects.filter(kind="section", number=rule.section).first() if rule.kind != "chapter" else None
+    if rule.kind == "chapter":
+        children = list(Rule.objects.filter(kind="section", parent=rule.number))
+    elif rule.kind == "section":
+        children = list(Rule.objects.filter(section=rule.number, kind__in=["rule", "subrule"]))
+    else:
+        children = [rule] + list(Rule.objects.filter(parent=rule.number, kind="subrule"))
+
+    siblings = list(Rule.objects.filter(kind=rule.kind, parent=rule.parent).values_list("number", flat=True)) \
+        if rule.kind in ("section", "rule") else []
+    i = siblings.index(rule.number) if rule.number in siblings else -1
+    return render(request, "collection/rule.html", {
+        "active_tab": "rules", "rule": rule, "chapter": chapter, "section": section, "children": children,
+        "edition": RulesEdition.objects.first(),
+        "previous": siblings[i - 1] if i > 0 else None,
+        "next": siblings[i + 1] if 0 <= i < len(siblings) - 1 else None,
+    })
+
+
+def glossary(request):
+    terms = list(GlossaryTerm.objects.all())
+    letters = sorted({t.term[0].upper() for t in terms if t.term and t.term[0].isalpha()})
+    return render(request, "collection/glossary.html", {
+        "active_tab": "rules", "terms": terms, "letters": letters, "edition": RulesEdition.objects.first(),
+    })
+
+
+@require_POST
+def rules_load(request):
+    try:
+        edition = rules.load_latest()
+    except rules.RulesError as exc:
+        messages.error(request, f"The rules weren't loaded. {exc}")
+    else:
+        messages.success(request, f"Loaded the Comprehensive Rules effective {edition.effective}: "
+                                  f"{edition.rule_count:,} rules and {edition.term_count} glossary terms.")
+    return redirect("collection:rules")
+
+
+def card_detail(request, pk):
+    """One card: its text, rulings, the rules for its keywords, and where you use it."""
+    card = get_object_or_404(Card, pk=pk)
+    rulings_error = None
+    try:
+        services.load_rulings(card, force=request.GET.get("refresh") == "1")
+    except scryfall.ScryfallError as exc:
+        rulings_error = str(exc)
+
+    keyword_rules = []
+    if card.keywords and RulesEdition.objects.exists():
+        index = rules.keyword_index()
+        for kw in [k.strip() for k in card.keywords.split(",") if k.strip()]:
+            number = index.get(kw.lower())
+            if number:
+                parts = list(Rule.objects.filter(parent=number, kind="subrule")[:2])
+                keyword_rules.append({"keyword": kw, "number": number, "parts": parts})
+
+    owned = CollectionItem.objects.filter(card__name=card.name).aggregate(n=Sum("quantity"))["n"] or 0
+    decks = sorted({e.deck for e in DeckCard.objects.filter(card__name=card.name).select_related("deck")},
+                   key=lambda d: d.name)
+    legal = sorted(((fmt, status) for fmt, status in (card.legalities or {}).items()
+                    if fmt in dict(Deck.FORMAT_CHOICES)), key=lambda kv: list(dict(Deck.FORMAT_CHOICES)).index(kv[0]))
+    return render(request, "collection/card.html", {
+        "active_tab": "cards", "card": card, "rulings": list(card.rulings.all()),
+        "rulings_error": rulings_error, "keyword_rules": keyword_rules, "owned": owned, "decks": decks,
+        "legal": legal, "rules_loaded": RulesEdition.objects.exists(),
+    })

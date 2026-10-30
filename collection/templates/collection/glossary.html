@@ -1,0 +1,23 @@
+{% extends "collection/base.html" %}
+{% load cards %}
+{% block title %}Rules glossary · Mana Ledger{% endblock %}
+{% block heading %}Glossary{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <nav class="crumbs small"><a href="{% url 'collection:rules' %}">Rules</a> › Glossary{% if edition %} <span class="muted">· effective {{ edition.effective }}</span>{% endif %}</nav>
+  {% if terms %}
+    <nav class="letters" aria-label="Jump to a letter">
+      {% for l in letters %}<a href="#letter-{{ l }}">{{ l }}</a>{% endfor %}
+    </nav>
+    <dl class="glossary-list">
+      {% for t in terms %}
+        {% ifchanged t.term.0|upper %}<h3 id="letter-{{ t.term.0|upper }}" class="letter-head">{{ t.term.0|upper }}</h3>{% endifchanged %}
+        <div><dt>{{ t.term }}</dt><dd>{{ t.definition|rule_text }}</dd></div>
+      {% endfor %}
+    </dl>
+  {% else %}
+    <p class="muted">The rules haven't been loaded yet. <a href="{% url 'collection:rules' %}">Load them on the Rules page.</a></p>
+  {% endif %}
+</section>
+{% endblock %}

@@ -123,6 +123,26 @@ Open http://127.0.0.1:8000/ and use **Add Cards** to search for your first card.
   the "value by day" chart, so the history grows the more often you refresh.
 - **Light mode** switches themes and remembers your choice in this browser.
 
+## Rules and rulings
+
+- **Card pages:** click any card name in My Cards or a deck to open its page:
+  image, text, legality in each format, how many you own, which decks use it,
+  the Comprehensive Rules for its keywords (Deathtouch → 702.2), and Wizards'
+  **official rulings** (from Scryfall). Rulings are saved after the first look
+  and rechecked monthly, or when you press **Check for new rulings**. In
+  Playtest, a card's menu links to this page.
+- **Rules tab:** the full Magic Comprehensive Rules, searchable. Type words
+  (every word must appear; use "quotes" for phrases) to see matching rules and
+  glossary entries, or a rule number like `702.19` to jump to it. Rule numbers
+  inside rules, rulings and the glossary are links. There's also a table of
+  contents and an A–Z glossary.
+- **Loading the rules:** new codespaces load them during setup. Otherwise press
+  **Download the latest rules** on the Rules tab, or run
+  `python manage.py load_rules`. It finds the newest file on
+  magic.wizards.com/en/rules; run it again when Wizards updates the rules (a
+  few times a year), or use **Check for newer rules**. Offline? Download the
+  .txt yourself and run `python manage.py load_rules --file MagicCompRules.txt`.
+
 ## Importing a card list
 
 The **Import** tab adds many cards at once. Paste one card per line and press
@@ -234,6 +254,8 @@ python manage.py refresh_prices
 | `collection/models.py` | `Card` (one printing, with its rules text), `CollectionItem` (copies you own, per finish), `Deck` and `DeckCard` (a deck and the cards in it), `PriceSnapshot` (a card's price on one day), `CollectionSnapshot` (your total on one day) |
 | `collection/scryfall.py` | Scryfall client: search, autocomplete, batch lookups of 75 cards per request, polite rate limiting and headers |
 | `collection/services.py` | Saving cards, adding to the collection, refreshing prices, recording snapshots |
+| `collection/rules.py` | Downloads, parses and indexes the Comprehensive Rules |
+| `collection/management/commands/load_rules.py` | The `load_rules` command |
 | `collection/brackets.py` | Commander bracket rules, Game Changers list, impact card points, known combos |
 | `collection/spellbook.py` | Commander Spellbook bracket and combo check |
 | `collection/ocr.py` | Reads card photos with Tesseract and identifies each card |

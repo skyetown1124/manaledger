@@ -92,6 +92,33 @@ def import_items(items):
     return {"cards": printings, "copies": copies, "missing": missing}
 
 
+RULINGS_MAX_AGE_DAYS = 30
+
+
+def load_rulings(card, force=False):
+    """Fetch a card's official rulings from Scryfall if they're missing or over a month old.
+
+    Raises scryfall.ScryfallError when Scryfall can't be reached (saved rulings stay)."""
+    from datetime import timedelta
+
+    from .models import Ruling
+
+    fresh = card.rulings_checked_at and timezone.now() - card.rulings_checked_at < timedelta(days=RULINGS_MAX_AGE_DAYS)
+    if fresh and not force:
+        return False
+    found = scryfall.rulings(card.scryfall_id)
+    with transaction.atomic():
+        card.rulings.all().delete()
+        Ruling.objects.bulk_create([
+            Ruling(card=card, source=r.get("source", ""), comment=r.get("comment", ""),
+                   published_at=r.get("published_at") or None)
+            for r in found if r.get("comment")
+        ])
+        card.rulings_checked_at = timezone.now()
+        card.save(update_fields=["rulings_checked_at"])
+    return True
+
+
 def basic_land(name):
     """A Card for a basic land: a printing already saved, or Scryfall's default one."""
     card = Card.objects.filter(name=name, type_line__contains="Basic").order_by("-released_at").first()

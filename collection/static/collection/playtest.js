@@ -201,6 +201,10 @@
         card.oracle_text ? el("div", { class: "pt-menu-text", text: card.oracle_text }) : null,
         stats(card) ? el("div", { class: "small", text: stats(card) }) : null),
       ...items,
+      card.id && !card.token
+        ? el("a", { class: "pt-menu-item", role: "menuitem", href: `/cards/${card.id}/`, target: "_blank", rel: "noopener",
+            text: "Card details and rulings ↗" })
+        : null,
     );
     menu.hidden = false;
     const r = anchor.getBoundingClientRect();

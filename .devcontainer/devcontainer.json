@@ -1,7 +1,7 @@
 {
   "name": "Mana Ledger",
   "image": "mcr.microsoft.com/devcontainers/python:3.12",
-  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y tesseract-ocr && pip install -r requirements.txt && python manage.py migrate",
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y tesseract-ocr && pip install -r requirements.txt && python manage.py migrate && (python manage.py load_rules || echo Rules can be loaded later from the Rules page)",
   "postAttachCommand": "python manage.py runserver 0.0.0.0:8000",
   "forwardPorts": [8000],
   "portsAttributes": {

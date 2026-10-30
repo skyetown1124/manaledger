@@ -61,3 +61,27 @@ def highlight(text, terms):
 @register.filter
 def get_item(mapping, key):
     return (mapping or {}).get(key)
+
+
+# "702.19b" anywhere, or "section 702" / "rule 704" (a bare section number, with no decimal after it)
+_RULE_REF = re.compile(r"\b(\d{3}\.\d+[a-z]?)\b|\b((?i:rules?|sections?)\s+)(\d{3})(?![.\d]*\d)\b")
+
+
+@register.filter
+def rule_text(text, terms=None):
+    """Escape rules text, highlight search terms, and link rule numbers ("See rule 702.19b")."""
+    from django.urls import reverse
+
+    safe = escape(text or "")
+    words = [t for t in (terms or []) if t]
+    if words:
+        pattern = re.compile("|".join(re.escape(escape(w)) for w in sorted(words, key=len, reverse=True)), re.I)
+        safe = pattern.sub(lambda m: f"<mark>{m.group(0)}</mark>", safe)
+
+    def link(m):
+        if m.group(1):
+            n = m.group(1)
+            return f'<a href="{reverse("collection:rule", args=[n])}">{n}</a>'
+        return f'{m.group(2)}<a href="{reverse("collection:rule", args=[m.group(3)])}">{m.group(3)}</a>'
+
+    return mark_safe(_RULE_REF.sub(link, safe).replace("\n", "<br>"))

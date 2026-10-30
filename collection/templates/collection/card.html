@@ -1,0 +1,75 @@
+{% extends "collection/base.html" %}
+{% load money cards %}
+{% block title %}{{ card.name }} · Mana Ledger{% endblock %}
+{% block heading %}{{ card.name }}{% endblock %}
+
+{% block content %}
+<section class="card-page">
+  <div class="panel card-image-panel">
+    {% if card.image_url %}
+      <img src="{{ card.image_url }}" alt="{{ card.name }}" class="card-image">
+    {% else %}
+      <div class="card-image placeholder">{{ card.name }}</div>
+    {% endif %}
+    <dl class="card-facts">
+      <div><dt>Printing</dt><dd>{{ card.set_name }} · {{ card.set_code|upper }} #{{ card.collector_number }}</dd></div>
+      <div><dt>Price</dt><dd>{{ card.usd|money }}{% if card.usd_foil %} · foil {{ card.usd_foil|money }}{% endif %}</dd></div>
+      <div><dt>You own</dt><dd>{{ owned }} cop{{ owned|pluralize:"y,ies" }}</dd></div>
+      {% if decks %}<div><dt>In decks</dt><dd>{% for d in decks %}<a href="{% url 'collection:deck' d.pk %}">{{ d.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</dd></div>{% endif %}
+    </dl>
+    {% if card.scryfall_uri %}<a class="small" href="{{ card.scryfall_uri }}" target="_blank" rel="noopener">View on Scryfall</a>{% endif %}
+  </div>
+
+  <div class="card-main">
+    <div class="panel">
+      <div class="card-title-row">
+        <h3>{{ card.name }}</h3>{{ card.mana_cost|mana }}
+      </div>
+      <p class="muted">{{ card.type_line }}{% if card.game_changer %} · <span class="status warn">Game Changer</span>{% endif %}</p>
+      {% if card.oracle_text %}<p class="card-oracle">{{ card.oracle_text|linebreaksbr }}</p>{% endif %}
+      {% if card.power or card.toughness %}<p class="strong">{{ card.power }}/{{ card.toughness }}</p>{% endif %}
+      {% if card.loyalty %}<p class="strong">Loyalty {{ card.loyalty }}</p>{% endif %}
+      {% if legal %}
+        <div class="legal-row">
+          {% for fmt, status in legal %}<span class="legal-chip {{ status }}" title="{{ status|cut:'_' }}">{{ fmt|capfirst }}: {% if status == "legal" %}legal{% elif status == "restricted" %}restricted{% elif status == "banned" %}banned{% else %}not legal{% endif %}</span>{% endfor %}
+        </div>
+      {% endif %}
+    </div>
+
+    {% if keyword_rules %}
+      <div class="panel">
+        <h3>Keyword rules</h3>
+        {% for k in keyword_rules %}
+          <div class="keyword-rule">
+            <a class="rule-number" href="{% url 'collection:rule' k.number %}">{{ k.number }}</a> <strong>{{ k.keyword }}</strong>
+            {% for p in k.parts %}<p class="small">{{ p.number }} {{ p.text|rule_text }}</p>{% endfor %}
+          </div>
+        {% endfor %}
+      </div>
+    {% elif card.keywords and not rules_loaded %}
+      <div class="panel"><p class="note">Load the rules on the <a href="{% url 'collection:rules' %}">Rules page</a> to see the rules for {{ card.keywords }} here.</p></div>
+    {% endif %}
+
+    <div class="panel">
+      <div class="section-head">
+        <span>Official rulings</span><span class="spacer"></span>
+        <a class="btn small ghost" href="?refresh=1">Check for new rulings</a>
+      </div>
+      {% if rulings_error %}<div class="message error">Couldn't load rulings from Scryfall. {{ rulings_error }}</div>{% endif %}
+      {% if rulings %}
+        <ol class="rulings">
+          {% for r in rulings %}
+            <li>
+              <span class="small muted">{{ r.published_at|date:"M j, Y" }}{% if r.source == "scryfall" %} · Scryfall note{% endif %}</span>
+              <p>{{ r.comment|rule_text }}</p>
+            </li>
+          {% endfor %}
+        </ol>
+      {% elif not rulings_error %}
+        <p class="muted">There are no official rulings for this card. Its text is all there is.</p>
+      {% endif %}
+      <p class="small muted">Rulings are Wizards' published notes for this card, via Scryfall. They apply to every printing.</p>
+    </div>
+  </div>
+</section>
+{% endblock %}

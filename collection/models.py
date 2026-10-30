@@ -32,6 +32,7 @@ class Card(models.Model):
     legalities = models.JSONField(default=dict, blank=True, help_text="Format -> 'legal', 'not_legal', 'banned' or 'restricted'")
     details_loaded = models.BooleanField(default=False, help_text="False until Scryfall has sent this card's text.")
     game_changer = models.BooleanField(default=False, help_text="On the official Commander Game Changers list (from Scryfall).")
+    rulings_checked_at = models.DateTimeField(null=True, blank=True, help_text="When the official rulings were last fetched.")
 
     usd = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     usd_foil = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
@@ -187,3 +188,64 @@ class CollectionSnapshot(models.Model):
 
     def __str__(self):
         return f"{self.date}: ${self.total_value}"
+
+
+class Ruling(models.Model):
+    """An official ruling (Gatherer note) on a card, from Scryfall."""
+
+    card = models.ForeignKey(Card, on_delete=models.CASCADE, related_name="rulings")
+    source = models.CharField(max_length=20, blank=True, help_text="'wotc' for Wizards, 'scryfall' for Scryfall's notes")
+    published_at = models.DateField(null=True, blank=True)
+    comment = models.TextField()
+
+    class Meta:
+        ordering = ["published_at", "id"]
+
+    def __str__(self):
+        return f"{self.card.name}: {self.comment[:60]}"
+
+
+class RulesEdition(models.Model):
+    """Which version of the Comprehensive Rules is loaded (one row)."""
+
+    effective = models.CharField(max_length=120, help_text="e.g. 'September 25, 2026'")
+    source_url = models.URLField(max_length=500, blank=True)
+    loaded_at = models.DateTimeField(auto_now=True)
+    rule_count = models.PositiveIntegerField(default=0)
+    term_count = models.PositiveIntegerField(default=0)
+
+    def __str__(self):
+        return f"Comprehensive Rules effective {self.effective}"
+
+
+class Rule(models.Model):
+    """One numbered entry of the Comprehensive Rules: a chapter (7), section (702),
+    rule (702.2) or subrule (702.2b)."""
+
+    KIND_CHOICES = [("chapter", "Chapter"), ("section", "Section"), ("rule", "Rule"), ("subrule", "Subrule")]
+
+    number = models.CharField(max_length=20, unique=True)
+    kind = models.CharField(max_length=10, choices=KIND_CHOICES)
+    parent = models.CharField(max_length=20, blank=True, db_index=True, help_text="Number of the entry above this one")
+    section = models.CharField(max_length=5, db_index=True, help_text="Three-digit section, e.g. 702")
+    text = models.TextField()
+    examples = models.TextField(blank=True, help_text="Example paragraphs, one per line")
+    order = models.PositiveIntegerField(db_index=True)
+
+    class Meta:
+        ordering = ["order"]
+
+    def __str__(self):
+        return f"{self.number} {self.text[:60]}"
+
+
+class GlossaryTerm(models.Model):
+    term = models.CharField(max_length=200)
+    definition = models.TextField()
+    order = models.PositiveIntegerField(db_index=True)
+
+    class Meta:
+        ordering = ["order"]
+
+    def __str__(self):
+        return self.term

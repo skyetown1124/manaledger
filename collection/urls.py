@@ -23,6 +23,11 @@ urlpatterns = [
     path("decks/<int:pk>/settings/", views.deck_update, name="deck_update"),
     path("decks/<int:pk>/delete/", views.deck_delete, name="deck_delete"),
     path("decks/entry/<int:pk>/", views.deck_entry_update, name="deck_entry_update"),
+    path("cards/<int:pk>/", views.card_detail, name="card"),
+    path("rules/", views.rules_page, name="rules"),
+    path("rules/load/", views.rules_load, name="rules_load"),
+    path("rules/glossary/", views.glossary, name="glossary"),
+    path("rules/<str:number>/", views.rule_detail, name="rule"),
     path("refresh/", views.refresh, name="refresh"),
     path("api/autocomplete/", views.autocomplete, name="autocomplete"),
 ]
