@@ -27,6 +27,121 @@
   </div>
 </section>
 
+{% if bracket %}
+<section class="panel bracket-panel" id="bracket">
+  <div class="bracket-head">
+    <div class="bracket-badge b{{ bracket.bracket }}{% if bracket.plays_above %} over{% endif %}">
+      <span class="kpi-label">Bracket</span>
+      <strong>{{ bracket.bracket }}</strong>
+      <span>{{ bracket.name }}</span>
+    </div>
+    <div class="bracket-summary">
+      <h3>Plays like Bracket {{ bracket.bracket }}: {{ bracket.name }} <span class="muted small">· games usually last {{ bracket.turns }}</span></h3>
+      {% if bracket.plays_above %}
+        <div class="message error">You marked this deck as Bracket {{ bracket.intended }} ({{ bracket_names|get_item:bracket.intended }}), but its cards put it at Bracket {{ bracket.computed }}. Take out the cards below or play it at Bracket {{ bracket.computed }} tables.</div>
+      {% endif %}
+      {% if bracket.reasons and bracket.computed > 1 %}
+        <ul class="bracket-reasons">{% for r in bracket.reasons %}<li>{{ r }}</li>{% endfor %}</ul>
+      {% endif %}
+      {% if bracket.low_note %}
+        <p class="note">Nothing in the list pushes this deck above Core. Bracket 1 (Exhibition) is for decks built around a theme or idea rather than power; choose it below if that's this deck.</p>
+      {% endif %}
+      {% if bracket.cedh_hint %}
+        <p class="note">An impact score this high usually means a cEDH list. Choose Bracket 5 if it's built for the cEDH metagame.</p>
+      {% endif %}
+    </div>
+    <form method="post" action="{% url 'collection:deck_bracket' deck.pk %}" class="bracket-intent">
+      {% csrf_token %}
+      <label for="target-bracket" class="kpi-label">Meant for</label>
+      <select id="target-bracket" name="target_bracket" onchange="this.form.submit()">
+        <option value="" {% if not bracket.intended %}selected{% endif %}>Not set</option>
+        {% for value, label in bracket_choices %}<option value="{{ value }}" {% if value == bracket.intended %}selected{% endif %}>Bracket {{ label }}</option>{% endfor %}
+      </select>
+      <noscript><button type="submit" class="btn small">Save</button></noscript>
+    </form>
+  </div>
+
+  <div class="grid-2 inner">
+    <div>
+      <h3>Impact score <span class="impact-number">{{ bracket.impact_score }}</span></h3>
+      <div class="impact-meter" role="img" aria-label="Impact score {{ bracket.impact_score }}">
+        <span class="impact-fill" style="width: {{ bracket.score_pct }}%"></span>
+        {% for m in bracket.scale_marks %}<span class="impact-mark" style="left: {{ m.at }}%"><span>{{ m.label }}</span></span>{% endfor %}
+      </div>
+      <p class="note">Like a salt score for power: strong cards that aren't on the Game Changers list add 1–5 points each (fast mana, efficient tutors, free interaction, runaway engines, stax, and cards that came off the list). 8 points plays like Bracket 2, 18 like Bracket 3, 36 like Bracket 4.</p>
+      {% if bracket.impact_cards %}
+        <div class="table-wrap">
+          <table class="data impact-table">
+            <thead><tr><th>Card</th><th>Why it counts</th><th class="num">Points</th></tr></thead>
+            <tbody>
+              {% for c in bracket.impact_cards %}
+                <tr>
+                  <td><strong>{{ c.name }}</strong><div class="small muted">{{ c.category_label }}</div></td>
+                  <td class="small">{{ c.reason }}</td>
+                  <td class="num"><span class="points p{{ c.points }}">{{ c.points }}</span></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <p class="small muted">{% for label, pts in bracket.impact_by_category %}{{ label }} {{ pts }}{% if not forloop.last %} · {% endif %}{% endfor %}</p>
+      {% else %}
+        <p class="muted">No high-impact cards outside the Game Changers list.</p>
+      {% endif %}
+    </div>
+
+    <div class="bracket-rules">
+      <h3>Official bracket rules</h3>
+      <dl class="rule-list">
+        <div class="{% if bracket.game_changers %}{% if bracket.game_changers|length > 3 %}hit4{% else %}hit3{% endif %}{% endif %}">
+          <dt>Game Changers <span class="muted">({{ bracket.game_changers|length }}; none in 1–2, up to 3 in 3)</span></dt>
+          <dd>{% if bracket.game_changers %}{{ bracket.game_changers|join:", " }}{% else %}None{% endif %}</dd>
+        </div>
+        <div class="{% if bracket.mld %}hit4{% endif %}">
+          <dt>Mass land denial <span class="muted">(Bracket 4+)</span></dt>
+          <dd>{% if bracket.mld %}{{ bracket.mld|join:", " }}{% else %}None{% endif %}</dd>
+        </div>
+        <div class="{% if bracket.extra_turns|length > 1 %}hit4{% elif bracket.extra_turns %}hit2{% endif %}">
+          <dt>Extra turns <span class="muted">(none in 1; not chained below 4)</span></dt>
+          <dd>{% if bracket.extra_turns %}{{ bracket.extra_turns|join:", " }}{% else %}None{% endif %}</dd>
+        </div>
+        <div class="{% for c in bracket.combos %}{% if forloop.first %}{% if c.fast %}hit4{% else %}hit3{% endif %}{% endif %}{% endfor %}">
+          <dt>Two-card combos <span class="muted">(none in 1–2; not early in 3)</span></dt>
+          <dd>{% for c in bracket.combos %}{{ c.cards|join:" + " }} <span class="muted">({{ c.result }}{% if c.fast %}, fast{% endif %})</span>{% if not forloop.last %}<br>{% endif %}{% empty %}None of the well-known ones{% endfor %}</dd>
+        </div>
+      </dl>
+
+      <h3>Commander Spellbook</h3>
+      {% with sb=deck.spellbook_result %}
+        {% if sb %}
+          <p class="small">Checked {{ deck.spellbook_checked_at|date:"M j, g:i A" }} · rated <strong>{{ spellbook_tag_name }}</strong>{% if spellbook_bracket %} (Bracket {{ spellbook_bracket }}){% endif %}. Changed the deck since? Check again.</p>
+          {% if sb.combos %}
+            <ul class="sb-combos">
+              {% for c in sb.combos|slice:":12" %}
+                <li>
+                  <a href="{{ c.url }}" target="_blank" rel="noopener">{{ c.cards|join:" + " }}</a>
+                  {% if c.two_card %}<span class="status warn">two-card</span>{% endif %}
+                  <div class="small muted">{{ c.results|join:", " }}</div>
+                </li>
+              {% endfor %}
+            </ul>
+            {% if sb.combos|length > 12 %}<p class="small muted">and {{ sb.combos|length|add:"-12" }} more.</p>{% endif %}
+          {% else %}
+            <p class="small muted">No combos found.</p>
+          {% endif %}
+        {% else %}
+          <p class="small muted">Checks every known combo in this deck (not only two-card ones) against the Commander Spellbook database and gets its bracket estimate. Needs an internet connection.</p>
+        {% endif %}
+      {% endwith %}
+      <form method="post" action="{% url 'collection:deck_spellbook' deck.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn">{% if deck.spellbook_result %}Check again{% else %}Check combos with Commander Spellbook{% endif %}</button>
+      </form>
+    </div>
+  </div>
+</section>
+{% endif %}
+
 <section class="deck-layout">
   <!-- Deck list -->
   <div class="panel">

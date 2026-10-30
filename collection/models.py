@@ -31,6 +31,7 @@ class Card(models.Model):
     color_identity = models.CharField(max_length=10, blank=True)
     legalities = models.JSONField(default=dict, blank=True, help_text="Format -> 'legal', 'not_legal', 'banned' or 'restricted'")
     details_loaded = models.BooleanField(default=False, help_text="False until Scryfall has sent this card's text.")
+    game_changer = models.BooleanField(default=False, help_text="On the official Commander Game Changers list (from Scryfall).")
 
     usd = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     usd_foil = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
@@ -128,9 +129,18 @@ class Deck(models.Model):
         ("casual", "Casual (no rules)"),
     ]
 
+    BRACKET_CHOICES = [
+        (1, "1 · Exhibition"), (2, "2 · Core"), (3, "3 · Upgraded"), (4, "4 · Optimized"), (5, "5 · cEDH"),
+    ]
+
     name = models.CharField(max_length=100)
     format = models.CharField(max_length=20, choices=FORMAT_CHOICES, default="commander")
     description = models.TextField(blank=True)
+    target_bracket = models.PositiveSmallIntegerField(
+        choices=BRACKET_CHOICES, null=True, blank=True,
+        help_text="The Commander bracket you mean this deck for. The app flags it if the deck plays higher.")
+    spellbook_result = models.JSONField(null=True, blank=True, help_text="Last Commander Spellbook bracket check.")
+    spellbook_checked_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -176,6 +176,7 @@ def parse_card(raw):
         "loyalty": first_face("loyalty"),
         "color_identity": "".join(c for c in "WUBRG" if c in (raw.get("color_identity") or [])),
         "legalities": raw.get("legalities") or {},
+        "game_changer": bool(raw.get("game_changer")),
         "scryfall_id": raw["id"],
         "name": raw.get("name", ""),
         "set_code": raw.get("set", ""),

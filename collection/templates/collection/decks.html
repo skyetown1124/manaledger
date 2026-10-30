@@ -34,6 +34,13 @@
           <span><strong>{{ s.stats.deck_count }}</strong>{% if s.stats.target %} / {{ s.stats.target }}{% endif %} cards</span>
           <span><strong>{{ s.stats.value|money }}</strong></span>
         </div>
+        {% if s.bracket %}
+          <div class="deck-tile-bracket{% if s.bracket.plays_above %} over{% endif %}">
+            Bracket {{ s.bracket.bracket }} · {{ s.bracket.name }}
+            {% if s.bracket.plays_above %}<span class="small">(meant for {{ s.bracket.intended }})</span>{% endif %}
+            <span class="small muted">· impact {{ s.bracket.impact_score }}</span>
+          </div>
+        {% endif %}
         <div class="deck-tile-status">
           {% if s.stats.issues %}
             <span class="status warn">{{ s.stats.issues }} thing{{ s.stats.issues|pluralize }} to fix</span>

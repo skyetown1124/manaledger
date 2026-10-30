@@ -12,7 +12,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from . import decks as deckrules
-from . import importer, ocr, scryfall, search, services
+from . import brackets, importer, ocr, scryfall, search, services, spellbook
 from .models import Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, PriceSnapshot
 from .stats import build_dashboard
 
@@ -446,16 +446,35 @@ def _deck_entries(deck, owned):
             "price": _f(c.best_price), "owned": owned.get(c.id, 0), "is_basic": c.is_basic_land,
             "scryfall_uri": c.scryfall_uri, "image_url": c.image_url,
             "limit": _copy_limit(deck, c),
+            "game_changer": c.game_changer,
         })
     return rows
 
 
+def _bracket(deck, entries, stats=None):
+    """Bracket estimate for Commander decks (None for other formats).
+
+    If the deck plays above its intended bracket, the format checklist gets a warning too."""
+    if deck.format != "commander":
+        return None
+    result = brackets.estimate(entries, intended=deck.target_bracket, spellbook=deck.spellbook_result)
+    if stats is not None and result["plays_above"]:
+        stats["checks"].append({
+            "ok": False,
+            "label": f"Fits Bracket {result['intended']} ({brackets.BRACKET_NAMES[result['intended']]})",
+            "detail": f"Plays like Bracket {result['computed']}: " + "; ".join(result["reasons"]) + ".",
+        })
+        stats["issues"] += 1
+    return result
+
+
 def deck_list(request):
     owned = _owned_counts()
-    summaries = [
-        {"deck": deck, "stats": deckrules.analyze(deck.format, _deck_entries(deck, owned))}
-        for deck in Deck.objects.prefetch_related("entries__card")
-    ]
+    summaries = []
+    for deck in Deck.objects.prefetch_related("entries__card"):
+        entries = _deck_entries(deck, owned)
+        stats = deckrules.analyze(deck.format, entries)
+        summaries.append({"deck": deck, "stats": stats, "bracket": _bracket(deck, entries, stats)})
     return render(request, "collection/decks.html", {
         "active_tab": "decks", "summaries": summaries, "formats": Deck.FORMAT_CHOICES,
         "library_size": len(owned),
@@ -481,6 +500,7 @@ def deck_detail(request, pk):
     owned = _owned_counts()
     entries = _deck_entries(deck, owned)
     stats = deckrules.analyze(deck.format, entries)
+    bracket = _bracket(deck, entries, stats)
 
     # Other decks that use the same cards (you can share a card between decks).
     elsewhere = {}
@@ -531,7 +551,48 @@ def deck_detail(request, pk):
         "matches": matches, "fit": fit, "can_fit": deck.format == "commander" and has_commander,
         "commander_colors": commander_colors, "basic_lands": BASIC_LANDS,
         "chart_data": {"curve": stats["curve"], "symbols": stats["symbols"]},
+        "bracket": bracket, "bracket_choices": Deck.BRACKET_CHOICES,
+        "bracket_names": brackets.BRACKET_NAMES,
+        "spellbook_tag_name": brackets.SPELLBOOK_TAG_NAMES.get((deck.spellbook_result or {}).get("bracketTag"), ""),
+        "spellbook_bracket": brackets.SPELLBOOK_TAGS.get((deck.spellbook_result or {}).get("bracketTag")),
     })
+
+
+@require_POST
+def deck_bracket(request, pk):
+    """Save the bracket the player means this deck for."""
+    deck = get_object_or_404(Deck, pk=pk)
+    value = request.POST.get("target_bracket", "")
+    deck.target_bracket = int(value) if value in {"1", "2", "3", "4", "5"} else None
+    deck.save(update_fields=["target_bracket", "updated_at"])
+    if deck.target_bracket:
+        messages.success(request, f"{deck.name} is meant for Bracket {deck.target_bracket} "
+                                  f"({brackets.BRACKET_NAMES[deck.target_bracket]}).")
+    else:
+        messages.success(request, f"Cleared the intended bracket for {deck.name}.")
+    return redirect(reverse("collection:deck", args=[deck.pk]) + "#bracket")
+
+
+@require_POST
+def deck_spellbook(request, pk):
+    """Ask Commander Spellbook for its bracket estimate and the combos in this deck, and save it."""
+    deck = get_object_or_404(Deck.objects.prefetch_related("entries__card"), pk=pk)
+    commanders = [e.card.name for e in deck.entries.all() if e.board == "commander"]
+    main = [(e.card.name, e.quantity) for e in deck.entries.all() if e.board == "main"]
+    if not commanders and not main:
+        messages.error(request, "Add cards to the deck first.")
+        return redirect("collection:deck", pk=deck.pk)
+    try:
+        result = spellbook.estimate(commanders, main)
+    except spellbook.SpellbookError as exc:
+        messages.error(request, f"Combos weren't checked. {exc}")
+    else:
+        deck.spellbook_result = result
+        deck.spellbook_checked_at = timezone.now()
+        deck.save(update_fields=["spellbook_result", "spellbook_checked_at", "updated_at"])
+        found = len(result["combos"])
+        messages.success(request, f"Commander Spellbook found {found} combo{'s' if found != 1 else ''} in this deck.")
+    return redirect(reverse("collection:deck", args=[deck.pk]) + "#bracket")
 
 
 def deck_playtest(request, pk):

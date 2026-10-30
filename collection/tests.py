@@ -822,3 +822,158 @@ class PlaytestViewTests(TestCase):
         page = self.client.get(reverse("collection:deck_playtest", args=[deck.pk]))
         self.assertContains(page, "Nothing to shuffle yet")
         self.assertEqual(page.context["playtest"]["life"], 20)
+
+
+# ------------------------------------------------------------------ Commander brackets
+
+from . import brackets, spellbook
+
+
+def bentry(name, text="", gc=False, qty=1, board="main"):
+    return {"name": name, "oracle_text": text, "game_changer": gc, "quantity": qty, "board": board}
+
+
+class BracketRuleTests(TestCase):
+    def test_game_changer_list_is_current(self):
+        self.assertEqual(len(brackets.GAME_CHANGERS), 53)
+        self.assertIn("Farewell", brackets.GAME_CHANGERS)            # added Feb 2026
+        self.assertNotIn("Food Chain", brackets.GAME_CHANGERS)       # removed Oct 2025
+        overlap = [n for n in brackets.IMPACT_CARDS if n in brackets.GAME_CHANGERS]
+        self.assertEqual(overlap, [])                                # impact list is non-GC only
+
+    def test_plain_deck_is_core(self):
+        r = brackets.estimate([bentry("Sol Ring"), bentry("Arcane Signet"), bentry("Llanowar Elves")])
+        self.assertEqual((r["bracket"], r["computed"], r["impact_score"]), (2, 1, 1))
+        self.assertTrue(r["low_note"])
+        # Exhibition is a choice the player makes
+        self.assertEqual(brackets.estimate([bentry("Sol Ring")], intended=1)["bracket"], 1)
+
+    def test_game_changer_counts(self):
+        one = brackets.estimate([bentry("Rhystic Study")])                      # by name
+        self.assertEqual(one["bracket"], 3)
+        four = brackets.estimate([bentry(n) for n in ["Rhystic Study", "Cyclonic Rift", "Mana Vault"]]
+                                 + [bentry("New Spoiler", gc=True)])               # by Scryfall flag
+        self.assertEqual(four["bracket"], 4)
+        self.assertIn("4 Game Changers", four["reasons"][0])
+
+    def test_mass_land_denial_and_extra_turns(self):
+        self.assertEqual(brackets.estimate([bentry("Armageddon")])["bracket"], 4)
+        self.assertEqual(brackets.estimate([bentry("Mystery Card", "Destroy all lands.")])["bracket"], 4)
+        self.assertEqual(brackets.estimate([bentry("Two Lands", "Each player sacrifices two lands.")])["bracket"], 2)
+        one_turn = brackets.estimate([bentry("Time Warp", "Target player takes an extra turn after this one.")])
+        self.assertEqual(one_turn["bracket"], 2)
+        self.assertEqual(one_turn["extra_turns"], ["Time Warp"])
+        two = brackets.estimate([bentry("Time Warp", "Target player takes an extra turn after this one."),
+                                 bentry("Temporal Manipulation", "Take an extra turn after this one.")])
+        self.assertEqual(two["bracket"], 4)
+
+    def test_two_card_combos(self):
+        fast = brackets.estimate([bentry("Isochron Scepter"), bentry("Dramatic Reversal")])
+        self.assertEqual(fast["bracket"], 4)
+        slow = brackets.estimate([bentry("Exquisite Blood"), bentry("Sanguine Bond")])
+        self.assertEqual(slow["bracket"], 3)
+        self.assertEqual(slow["combos"][0]["cards"], ["Exquisite Blood", "Sanguine Bond"])
+
+    def test_impact_score_forces_a_higher_bracket(self):
+        # No Game Changers, no combos, but packed with fast mana, tutors and free counters.
+        names = ["Lotus Petal", "Mox Opal", "City of Traitors", "Dark Ritual", "Simian Spirit Guide",
+                 "Demonic Consultation", "Grim Tutor", "Pact of Negation", "Grand Abolisher", "Necrodominance",
+                 "Mystic Remora", "Esper Sentinel"]
+        r = brackets.estimate([bentry(n) for n in names], intended=2)
+        self.assertEqual(r["impact_score"], 44)   # 4+4+4+3+3+4+4+4+4+4+3+3
+        self.assertEqual((r["computed"], r["bracket"]), (4, 4))
+        self.assertTrue(r["plays_above"])
+        self.assertIn("Impact score 44", r["reasons"][0])
+        upgraded = brackets.estimate([bentry(n) for n in ["Mystic Remora", "Sylvan Library", "Eladamri's Call",
+                                                           "Green Sun's Zenith", "Birds of Paradise", "Noble Hierarch",
+                                                           "Swan Song"]])
+        self.assertEqual((upgraded["impact_score"], upgraded["bracket"]), (18, 3))
+
+    def test_intended_bracket(self):
+        r = brackets.estimate([bentry("Rhystic Study")], intended=4)
+        self.assertEqual((r["bracket"], r["plays_above"]), (4, False))      # built for a stronger table
+        r = brackets.estimate([bentry("Rhystic Study")], intended=2)
+        self.assertEqual((r["bracket"], r["plays_above"]), (3, True))       # forced up to 3
+
+    def test_spellbook_tag_is_a_floor(self):
+        r = brackets.estimate([bentry("Sol Ring")], spellbook={"bracketTag": "R", "combos": []})
+        self.assertEqual(r["bracket"], 4)
+        self.assertIn("Ruthless", r["reasons"][0])
+
+    def test_names_with_accents_and_faces(self):
+        r = brackets.estimate([bentry("Lim-Dul's Vault"), bentry("Birgi, God of Storytelling // Harnfel, Horn of Bounty")])
+        self.assertEqual({c["name"] for c in r["impact_cards"]},
+                         {"Lim-Dul's Vault", "Birgi, God of Storytelling // Harnfel, Horn of Bounty"})
+
+
+class SpellbookTests(TestCase):
+    SAMPLE = {
+        "bracketTag": "S",
+        "cards": [{"card": {"name": "Rhystic Study"}, "quantity": 1, "banned": False, "gameChanger": True,
+                   "massLandDenial": False, "extraTurn": False}],
+        "combos": [
+            {"combo": {"id": "123-456", "uses": [{"card": {"name": "Exquisite Blood"}}, {"card": {"name": "Sanguine Bond"}}],
+                       "produces": [{"feature": {"name": "Infinite lifeloss"}}]},
+             "relevant": True, "definitelyTwoCard": True, "speed": 3},
+            {"combo": {"id": "9", "uses": [{"card": {"name": "A"}}, {"card": {"name": "B"}}, {"card": {"name": "C"}}],
+                       "produces": [{"feature": {"name": "Infinite mana"}}]},
+             "relevant": True, "definitelyTwoCard": False, "speed": 4},
+        ],
+    }
+
+    def test_summary(self):
+        s = spellbook.summarize(self.SAMPLE)
+        self.assertEqual(s["bracketTag"], "S")
+        self.assertEqual(s["gameChangers"], ["Rhystic Study"])
+        self.assertEqual(s["combos"][0]["cards"], ["Exquisite Blood", "Sanguine Bond"])   # two-card first
+        self.assertTrue(s["combos"][0]["two_card"])
+        self.assertEqual(s["combos"][0]["url"], "https://commanderspellbook.com/combo/123-456/")
+
+    def test_check_button_saves_the_result(self):
+        card = make_card("Sheoldred", type_line="Legendary Creature — Praetor")
+        deck = Deck.objects.create(name="EDH", format="commander")
+        DeckCard.objects.create(deck=deck, card=card, board="commander")
+        with mock.patch.object(spellbook, "estimate", return_value=spellbook.summarize(self.SAMPLE)) as call:
+            self.client.post(reverse("collection:deck_spellbook", args=[deck.pk]))
+        call.assert_called_once_with(["Sheoldred"], [])
+        deck.refresh_from_db()
+        self.assertEqual(deck.spellbook_result["bracketTag"], "S")
+        page = self.client.get(reverse("collection:deck", args=[deck.pk]))
+        self.assertContains(page, "Exquisite Blood + Sanguine Bond")
+        self.assertContains(page, "Spicy")
+
+    def test_check_failure_is_explained(self):
+        deck = Deck.objects.create(name="EDH", format="commander")
+        DeckCard.objects.create(deck=deck, card=make_card("Sol Ring"), board="main")
+        with mock.patch.object(spellbook, "estimate", side_effect=spellbook.SpellbookError("Couldn't reach Commander Spellbook.")):
+            page = self.client.post(reverse("collection:deck_spellbook", args=[deck.pk]), follow=True)
+        self.assertContains(page, "Combos weren&#x27;t checked.")
+
+
+class BracketPageTests(TestCase):
+    def test_deck_page_and_intended_bracket(self):
+        deck = Deck.objects.create(name="EDH", format="commander")
+        for name in ["Rhystic Study", "Mystic Remora", "Sol Ring"]:
+            DeckCard.objects.create(deck=deck, card=make_card(name), board="main")
+        page = self.client.get(reverse("collection:deck", args=[deck.pk]))
+        self.assertContains(page, "Plays like Bracket 3: Upgraded")
+        self.assertContains(page, "Mystic Remora")
+
+        self.client.post(reverse("collection:deck_bracket", args=[deck.pk]), {"target_bracket": "2"})
+        deck.refresh_from_db()
+        self.assertEqual(deck.target_bracket, 2)
+        page = self.client.get(reverse("collection:deck", args=[deck.pk]))
+        self.assertContains(page, "You marked this deck as Bracket 2")
+        self.assertContains(page, "Fits Bracket 2 (Core)")                  # checklist warning
+        self.assertContains(self.client.get(reverse("collection:decks")), "(meant for 2)")
+
+    def test_other_formats_have_no_bracket(self):
+        deck = Deck.objects.create(name="Modern", format="modern")
+        page = self.client.get(reverse("collection:deck", args=[deck.pk]))
+        self.assertIsNone(page.context["bracket"])
+        self.assertNotContains(page, 'id="bracket"')
+
+    def test_scryfall_flag_is_saved(self):
+        from .scryfall import parse_card
+        card = parse_card({"id": "x", "name": "Farewell", "game_changer": True, "prices": {}})
+        self.assertTrue(card["game_changer"])

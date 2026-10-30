@@ -13,13 +13,13 @@ CARD_FIELDS = [
     "type_line", "released_at", "image_url", "scryfall_uri",
     "usd", "usd_foil", "usd_etched",
     "mana_cost", "cmc", "oracle_text", "keywords", "power", "toughness",
-    "loyalty", "color_identity", "legalities",
+    "loyalty", "color_identity", "legalities", "game_changer",
 ]
 
 
 def save_card(data):
     """Create or update a Card from parsed Scryfall data, and log today's price."""
-    defaults = {f: data[f] for f in CARD_FIELDS}
+    defaults = {f: data[f] for f in CARD_FIELDS if f in data}  # missing fields keep their defaults
     defaults["prices_updated"] = timezone.now()
     defaults["details_loaded"] = True
     card, _ = Card.objects.update_or_create(scryfall_id=data["scryfall_id"], defaults=defaults)

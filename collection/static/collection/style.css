@@ -399,6 +399,45 @@ table.heatmap.cmc-grid tfoot th { text-align: left; color: var(--muted); }
 .photo-results li div { flex-basis: 100%; }
 .confirm-import { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
 
+/* ---------- Commander brackets ---------- */
+:root { --b1: #8fb8de; --b2: #3fb950; --b3: #e3b341; --b4: #f26b38; --b5: #e5484d; }
+.bracket-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 20px; align-items: start; margin-bottom: 18px; }
+.bracket-badge { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  width: 112px; height: 112px; border-radius: 10px; border: 3px solid var(--b2); background: var(--panel-2); text-align: center; }
+.bracket-badge strong { font-size: 44px; line-height: 1; }
+.bracket-badge span:last-child { font-size: 13px; font-weight: 600; }
+.bracket-badge.b1 { border-color: var(--b1); } .bracket-badge.b2 { border-color: var(--b2); }
+.bracket-badge.b3 { border-color: var(--b3); } .bracket-badge.b4 { border-color: var(--b4); }
+.bracket-badge.b5 { border-color: var(--b5); }
+.bracket-badge.over { box-shadow: 0 0 0 3px color-mix(in srgb, var(--down) 45%, transparent); }
+.bracket-summary { min-width: 0; }
+.bracket-summary h3 { margin: 2px 0 8px; }
+.bracket-reasons { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; font-size: 13.5px; }
+.bracket-intent { display: flex; flex-direction: column; gap: 4px; }
+.impact-number { font-variant-numeric: tabular-nums; color: var(--gold); margin-left: 6px; }
+.impact-meter { position: relative; height: 12px; background: var(--panel-2); border-radius: 6px; margin: 4px 0 24px; }
+.impact-fill { position: absolute; inset: 0 auto 0 0; border-radius: 6px;
+  background: linear-gradient(90deg, var(--b2), var(--b3) 35%, var(--b4) 60%, var(--b5)); }
+.impact-mark { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--text); opacity: .55; }
+.impact-mark span { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); font-size: 11px; color: var(--muted); white-space: nowrap; }
+.impact-table td { vertical-align: top; }
+.points { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; font-weight: 700; font-size: 12px;
+  background: var(--panel-2); border: 2px solid var(--line); }
+.points.p3 { border-color: var(--b3); } .points.p4 { border-color: var(--b4); } .points.p5 { border-color: var(--b5); }
+.rule-list { margin: 0 0 18px; display: flex; flex-direction: column; gap: 8px; }
+.rule-list div { border-left: 3px solid var(--line); padding: 4px 10px; background: var(--panel-2); border-radius: 0 4px 4px 0; }
+.rule-list div.hit2 { border-left-color: var(--b2); } .rule-list div.hit3 { border-left-color: var(--b3); }
+.rule-list div.hit4 { border-left-color: var(--b4); }
+.rule-list dt { font-weight: 700; font-size: 13px; }
+.rule-list dd { margin: 2px 0 0; font-size: 13px; }
+.sb-combos { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.deck-tile-bracket { font-size: 13px; font-weight: 600; }
+.deck-tile-bracket.over { color: var(--down); }
+@media (max-width: 760px) {
+  .bracket-head { grid-template-columns: auto minmax(0, 1fr); }
+  .bracket-intent { grid-column: 1 / -1; }
+}
+
 /* ---------- Playtest ---------- */
 .pt-top { display: flex; flex-direction: column; gap: 12px; }
 .pt-bar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 14px; }

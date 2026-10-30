@@ -82,6 +82,16 @@ Open http://127.0.0.1:8000/ and use **Add Cards** to search for your first card.
   Banned, restricted and legal status comes from Scryfall and updates when you
   press **Refresh prices**.
 
+- **Commander bracket** (Commander decks): the deck page shows which bracket
+  (1–5) the deck actually plays at and why. It applies the official rules
+  (Game Changers, mass land denial, extra turns, two-card combos) and adds an
+  **impact score**, like a salt score for power: about 175 strong cards that
+  aren't Game Changers (fast mana, efficient tutors, free interaction, runaway
+  engines, stax, former Game Changers) add 1–5 points each, and a high total
+  pushes the deck up a bracket even when no rule does. Set the bracket you mean
+  the deck for, and it's flagged if it plays higher. **Check combos with
+  Commander Spellbook** looks up every combo in the deck online. The research
+  and sources are in [docs/BRACKETS.md](docs/BRACKETS.md).
 - **Playtest** (button on each deck page): goldfish the deck like solitaire.
   - Shuffle and draw 7, then keep or mulligan. Mulligans follow the London
     rule (draw 7, then put one card on the bottom per mulligan), and the first
@@ -224,6 +234,8 @@ python manage.py refresh_prices
 | `collection/models.py` | `Card` (one printing, with its rules text), `CollectionItem` (copies you own, per finish), `Deck` and `DeckCard` (a deck and the cards in it), `PriceSnapshot` (a card's price on one day), `CollectionSnapshot` (your total on one day) |
 | `collection/scryfall.py` | Scryfall client: search, autocomplete, batch lookups of 75 cards per request, polite rate limiting and headers |
 | `collection/services.py` | Saving cards, adding to the collection, refreshing prices, recording snapshots |
+| `collection/brackets.py` | Commander bracket rules, Game Changers list, impact card points, known combos |
+| `collection/spellbook.py` | Commander Spellbook bracket and combo check |
 | `collection/ocr.py` | Reads card photos with Tesseract and identifies each card |
 | `collection/importer.py` | Reads a pasted card list and matches each line to a Scryfall printing |
 | `collection/search.py` | Turns a search like `t:creature mv<=3` into a database filter, plus a plain-English summary |
