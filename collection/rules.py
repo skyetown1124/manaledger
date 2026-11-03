@@ -21,12 +21,16 @@ Wizards publishes the rules as a text file linked from https://magic.wizards.com
 parse() turns that into plain dicts (testable without a database); save() and
 load_latest() put it in the database.
 """
+import html
 import re
 
 import requests
 
 RULES_PAGE = "https://magic.wizards.com/en/rules"
-TXT_LINK_RE = re.compile(r"https://media\.wizards\.com/[^\"'\s<>]+?\.txt", re.I)
+TXT_LINK_RE = re.compile(r"(?:https?:)?//media\.wizards\.com/[^\"'\s<>\\]+?\.txt", re.I)
+# Used when the rules page can't be read (it's built by JavaScript and its markup changes).
+# Update this when Wizards publishes new rules; the app still tries the page first.
+KNOWN_TXT_URL = "https://media.wizards.com/2026/downloads/MagicCompRules%2020260925.txt"
 
 CHAPTER_RE = re.compile(r"^(\d)\.\s+(.+)$")
 SECTION_RE = re.compile(r"^(\d{3})\.\s+(.+)$")
@@ -154,7 +158,10 @@ def save(parsed, source_url=""):
 
 def _get(url):
     try:
-        resp = requests.get(url, timeout=60, headers={"User-Agent": "ManaLedger/1.0 (rules reader)"})
+        resp = requests.get(url, timeout=60, headers={
+            "User-Agent": "ManaLedger/1.0 (rules reader)",
+            "Accept": "text/html,text/plain,*/*",
+        })
     except requests.RequestException as exc:
         raise RulesError(f"Couldn't reach {url}: {exc}") from exc
     if resp.status_code >= 400:
@@ -162,19 +169,42 @@ def _get(url):
     return resp
 
 
+def find_txt_links(page_text):
+    """Every rules .txt link in a page, however the page escapes it
+    (plain HTML, &amp;-escaped, or inside JSON as https:\\/\\/ or \\u002F)."""
+    text = html.unescape(page_text)
+    text = text.replace("\\u002F", "/").replace("\\u002f", "/").replace("\\/", "/")
+    links = []
+    for link in TXT_LINK_RE.findall(text):
+        if link.startswith("//"):
+            link = "https:" + link
+        links.append(link.replace("http://", "https://", 1).replace(" ", "%20"))
+    return links
+
+
 def latest_url():
-    """The current rules .txt link from Wizards' rules page."""
-    links = TXT_LINK_RE.findall(_get(RULES_PAGE).text)
+    """The current rules .txt link from Wizards' rules page, or the last known one."""
+    try:
+        links = find_txt_links(_get(RULES_PAGE).text)
+    except RulesError:
+        links = []
     comp = [l for l in links if "comprules" in l.lower()] or links
-    if not comp:
-        raise RulesError("Couldn't find the rules text file on magic.wizards.com/en/rules. "
-                         "Download it yourself and run: python manage.py load_rules --file MagicCompRules.txt")
-    return sorted(set(comp))[-1]   # file names end in the date, so the last sorts newest
+    if comp:
+        return sorted(set(comp))[-1]   # file names end in the date, so the last sorts newest
+    return KNOWN_TXT_URL
 
 
 def load_latest(url=None):
     url = url or latest_url()
-    parsed = parse(decode(_get(url).content))
+    try:
+        body = _get(url).content
+    except RulesError as exc:
+        raise RulesError(f"{exc} Download the .txt version from magic.wizards.com/en/rules yourself and run: "
+                         "python manage.py load_rules --file \"MagicCompRules.txt\"") from exc
+    parsed = parse(decode(body))
+    if not parsed["rules"]:
+        raise RulesError(f"{url} didn't contain the Comprehensive Rules. Download the .txt version from "
+                         "magic.wizards.com/en/rules and run: python manage.py load_rules --file \"MagicCompRules.txt\"")
     return save(parsed, url)
 
 

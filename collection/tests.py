@@ -1046,6 +1046,21 @@ class RulesParserTests(TestCase):
             self.assertEqual(rulesmod.latest_url(),
                              "https://media.wizards.com/2026/downloads/MagicCompRules%2020260925.txt")
 
+    def test_finds_escaped_links(self):
+        json_page = mock.Mock(text='{"href":"https:\\/\\/media.wizards.com\\/2026\\/downloads\\/MagicCompRules%2020260925.txt"}')
+        unicode_page = mock.Mock(text='"https:\\u002F\\u002Fmedia.wizards.com\\u002F2026\\u002Fdownloads\\u002FMagicCompRules%2020260925.txt"')
+        relative_page = mock.Mock(text='<a href="//media.wizards.com/2026/downloads/MagicCompRules%2020260925.txt">TXT</a>')
+        want = "https://media.wizards.com/2026/downloads/MagicCompRules%2020260925.txt"
+        for page in (json_page, unicode_page, relative_page):
+            with mock.patch.object(rulesmod, "_get", return_value=page):
+                self.assertEqual(rulesmod.latest_url(), want)
+
+    def test_falls_back_to_known_link(self):
+        with mock.patch.object(rulesmod, "_get", return_value=mock.Mock(text="<div id=app></div>")):
+            self.assertEqual(rulesmod.latest_url(), rulesmod.KNOWN_TXT_URL)
+        with mock.patch.object(rulesmod, "_get", side_effect=rulesmod.RulesError("blocked")):
+            self.assertEqual(rulesmod.latest_url(), rulesmod.KNOWN_TXT_URL)
+
     def test_load_command(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "rules.txt"
