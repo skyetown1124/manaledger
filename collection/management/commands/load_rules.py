@@ -15,8 +15,13 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--file", help="A rules .txt file you've already downloaded")
         parser.add_argument("--url", help="A specific rules .txt URL")
+        parser.add_argument("--if-missing", action="store_true", help="Do nothing if rules are already loaded")
 
     def handle(self, file=None, url=None, **options):
+        from collection.models import RulesEdition
+        if options.get("if_missing") and RulesEdition.objects.exists():
+            self.stdout.write("The Comprehensive Rules are already loaded.")
+            return
         try:
             edition = rules.load_file(file) if file else rules.load_latest(url)
         except (rules.RulesError, OSError) as exc:

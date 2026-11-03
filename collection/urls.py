@@ -32,6 +32,8 @@ urlpatterns = [
     path("rules/load/", views.rules_load, name="rules_load"),
     path("rules/glossary/", views.glossary, name="glossary"),
     path("rules/<str:number>/", views.rule_detail, name="rule"),
+    path("backup/", views.backup_page, name="backup"),
+    path("backup/download/", views.backup_download, name="backup_download"),
     path("refresh/", views.refresh, name="refresh"),
     path("api/autocomplete/", views.autocomplete, name="autocomplete"),
 ]

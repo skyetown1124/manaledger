@@ -1348,3 +1348,89 @@ class PreconTests(TestCase):
         with mock.patch.object(precons, "_get_json", side_effect=precons.PreconError("Couldn't reach MTGJSON: timeout")):
             page = self.client.get(reverse("collection:precons"))
         self.assertContains(page, "Couldn&#x27;t reach MTGJSON")
+
+
+# ------------------------------------------------------------------ Database address, backup and restore
+
+class DatabaseUrlTests(TestCase):
+    def test_neon_style_address(self):
+        from manaledger import dburl
+        db = dburl.parse("postgresql://skye:p%40ss@ep-cool-name-123.us-east-2.aws.neon.tech/neondb"
+                         "?sslmode=require&channel_binding=require")
+        self.assertEqual(db["ENGINE"], "django.db.backends.postgresql")
+        self.assertEqual((db["HOST"], db["NAME"], db["USER"], db["PASSWORD"], db["PORT"]),
+                         ("ep-cool-name-123.us-east-2.aws.neon.tech", "neondb", "skye", "p@ss", ""))
+        self.assertEqual(db["OPTIONS"], {"sslmode": "require"})
+        self.assertNotIn("p@ss", dburl.describe(db))
+
+    def test_ssl_added_for_hosted_but_not_local(self):
+        from manaledger import dburl
+        self.assertEqual(dburl.parse("postgres://u:p@db.example.supabase.co:5432/postgres")["OPTIONS"],
+                         {"sslmode": "require"})
+        self.assertEqual(dburl.parse("postgres://u:p@db.example.supabase.co:5432/postgres")["PORT"], "5432")
+        self.assertEqual(dburl.parse("postgres://u:p@localhost/test")["OPTIONS"], {})
+
+    def test_bad_addresses(self):
+        from manaledger import dburl
+        for bad in ("mysql://u:p@h/db", "postgresql://u:p@host", "nonsense"):
+            with self.assertRaises(ValueError):
+                dburl.parse(bad)
+        self.assertEqual(dburl.parse("sqlite:///tmp/x.sqlite3")["NAME"], "/tmp/x.sqlite3")
+
+
+class BackupTests(TestCase):
+    def setUp(self):
+        self.ring = make_card("Sol Ring")
+        CollectionItem.objects.create(card=self.ring, quantity=2, finish="foil")
+        deck = Deck.objects.create(name="Backup deck", format="casual")
+        DeckCard.objects.create(deck=deck, card=self.ring, quantity=1)
+
+    def test_download_and_restore_round_trip(self):
+        download = self.client.get(reverse("collection:backup_download"))
+        self.assertIn("attachment; filename=\"manaledger-backup-", download["Content-Disposition"])
+        raw = download.content
+
+        # Change things after the backup, then restore it.
+        CollectionItem.objects.all().delete()
+        Deck.objects.create(name="Made later")
+        make_card("Later Card")
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        page = self.client.post(reverse("collection:backup"),
+                                {"confirm": "yes", "backup": SimpleUploadedFile("b.json", raw)}, follow=True)
+        self.assertContains(page, "Restored")
+        self.assertEqual(CollectionItem.objects.get().quantity, 2)
+        self.assertEqual(list(Deck.objects.values_list("name", flat=True)), ["Backup deck"])
+        self.assertFalse(Card.objects.filter(name="Later Card").exists())
+        self.assertEqual(DeckCard.objects.get().card.name, "Sol Ring")
+        Deck.objects.create(name="New after restore")  # ids keep working
+
+    def test_bad_file_changes_nothing(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from . import backup
+        for raw in (b"not json", b'{"x": 1}', b'[{"model": "collection.card", "pk": 1, "fields": {"bogus": 1}}]'):
+            self.client.post(reverse("collection:backup"),
+                             {"confirm": "yes", "backup": SimpleUploadedFile("b.json", raw)})
+            self.assertEqual(CollectionItem.objects.get().quantity, 2)
+        with self.assertRaises(backup.BackupError):
+            backup.restore(b'[{"model": "collection.rule", "pk": 1, "fields": {}}]')
+
+    def test_restore_needs_confirmation(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        raw = self.client.get(reverse("collection:backup_download")).content
+        CollectionItem.objects.all().delete()
+        self.client.post(reverse("collection:backup"), {"backup": SimpleUploadedFile("b.json", raw)})
+        self.assertEqual(CollectionItem.objects.count(), 0)
+
+    def test_page_shows_where_data_lives(self):
+        page = self.client.get(reverse("collection:backup"))
+        self.assertContains(page, "Local file (db.sqlite3)")
+        self.assertContains(page, "Keep your data permanently")
+
+    def test_loaddata_reads_backups(self):
+        raw = self.client.get(reverse("collection:backup_download")).content
+        CollectionItem.objects.all().delete()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "backup.json"
+            path.write_bytes(raw)
+            call_command("loaddata", str(path), verbosity=0)
+        self.assertEqual(CollectionItem.objects.get().quantity, 2)

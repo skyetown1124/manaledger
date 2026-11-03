@@ -5,7 +5,8 @@ from decimal import Decimal, InvalidOperation
 from django.contrib import messages
 from django.db import transaction
 from django.db.models import Q, Sum
-from django.http import JsonResponse
+from django.conf import settings
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -13,7 +14,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from . import decks as deckrules
-from . import brackets, importer, ocr, precons, rules, scryfall, search, services, spellbook
+from . import backup, brackets, importer, ocr, precons, rules, scryfall, search, services, spellbook
 from .models import (Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, GlossaryTerm, Precon, PriceSnapshot,
                      Rule, RulesEdition)
 from .stats import build_dashboard
@@ -1036,3 +1037,35 @@ def precon_build(request):
         msg += f" Scryfall couldn't find {len(summary['missing'])} card(s)."
     messages.success(request, msg)
     return redirect("collection:deck", pk=deck.pk)
+
+
+
+# ------------------------------------------------------------------ Backup and restore
+
+def backup_page(request):
+    if request.method == "POST":
+        upload = request.FILES.get("backup")
+        if request.POST.get("confirm") != "yes":
+            messages.error(request, "Tick the box to confirm you want to replace what's here, then restore again.")
+        elif not upload:
+            messages.error(request, "Choose a backup file first.")
+        elif upload.size > 200 * 1024 * 1024:
+            messages.error(request, "That file is too big to be a Mana Ledger backup.")
+        else:
+            try:
+                done = backup.restore(upload.read())
+            except backup.BackupError as exc:
+                messages.error(request, str(exc))
+            else:
+                messages.success(request, f"Restored {done['objects']:,} records from {upload.name}.")
+                return redirect("collection:backup")
+    return render(request, "collection/backup.html", {
+        "active_tab": "", "counts": backup.counts(), "database": settings.DATABASE_DESCRIPTION,
+        "permanent": not settings.DATABASES["default"]["ENGINE"].endswith("sqlite3"),
+    })
+
+
+def backup_download(request):
+    response = HttpResponse(backup.dump(), content_type="application/json")
+    response["Content-Disposition"] = f'attachment; filename="{backup.filename()}"'
+    return response

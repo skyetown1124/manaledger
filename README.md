@@ -21,6 +21,37 @@ Your collection is saved inside that codespace. Stop it when you're done
 left off. If you reopen it and the app isn't running, type
 `python manage.py runserver 0.0.0.0:8000` in the terminal.
 
+## Permanent database
+
+By default the app keeps everything in `db.sqlite3`, a file inside that copy of
+the app, so a new Codespace starts empty. To keep one permanent collection that
+every copy uses, give the app a free online Postgres database:
+
+1. **Back up what you have.** In the app, click **Backup & database** at the
+   bottom of any page and press **Download backup**.
+2. **Create the database.** Sign up at [neon.tech](https://neon.tech) (free
+   plan), create a project, and copy its connection string. It looks like
+   `postgresql://user:password@ep-something.us-east-2.aws.neon.tech/neondb?sslmode=require`.
+   [Supabase](https://supabase.com) works too (Project Settings → Database →
+   connection string).
+3. **Give it to Codespaces.** On GitHub go to your profile picture →
+   **Settings → Codespaces → Secrets → New secret**. Name it `DATABASE_URL`,
+   paste the connection string, and under **Repository access** pick
+   `manaledger`. Keep this string private: it contains the database password.
+4. **Start a new Codespace** (or in an open one: Ctrl+Shift+P → "Codespaces:
+   Rebuild Container"). Setup creates the tables in the new database.
+5. **Restore your backup** on the **Backup & database** page. The page now
+   says "Postgres at ..." instead of "Local file".
+
+From then on, any Codespace you open uses the same data. To use the same
+database on your own computer, set `DATABASE_URL` there before starting the app
+(PowerShell: `$env:DATABASE_URL="postgresql://..."`; Mac/Linux:
+`export DATABASE_URL="postgresql://..."`), then run `python manage.py migrate`
+once. Without `DATABASE_URL` the app goes back to the local file.
+
+Backups are plain JSON in the same format as `python manage.py dumpdata`, so
+`python manage.py loaddata manaledger-backup-....json` also restores one.
+
 ## Run it on your computer
 
 You need Python 3.10 or newer.

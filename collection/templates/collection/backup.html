@@ -1,0 +1,46 @@
+{% extends "collection/base.html" %}
+{% load humanize %}
+{% block title %}Backup · Mana Ledger{% endblock %}
+{% block heading %}Backup &amp; database{% endblock %}
+
+{% block content %}
+<section class="kpis">
+  <div class="kpi {% if permanent %}kpi-good{% else %}kpi-gold{% endif %}">
+    <div class="kpi-label">Stored in</div>
+    <div class="kpi-value kpi-value-text">{{ database }}</div>
+    <div class="kpi-sub">{% if permanent %}Permanent: the same data wherever the app runs{% else %}Only in this copy of the app. A new Codespace starts empty.{% endif %}</div>
+  </div>
+  {% for label, n in counts.items %}
+    <div class="kpi kpi-blue">
+      <div class="kpi-label">{{ label|capfirst }}</div>
+      <div class="kpi-value">{{ n|intcomma }}</div>
+    </div>
+  {% endfor %}
+</section>
+
+{% if not permanent %}
+<section class="panel callout-panel">
+  <h3>Keep your data permanently</h3>
+  <p class="note">Set a <code>DATABASE_URL</code> for a free online Postgres database (Neon or Supabase) and the app stores everything there instead of in this copy. The README's "Permanent database" section has the steps. Download a backup first, then restore it once the new database is connected.</p>
+</section>
+{% endif %}
+
+<section class="grid-2">
+  <div class="panel">
+    <h3>Download a backup</h3>
+    <p class="note">One file with your collection, decks and price history. Card text, rulings and the rules aren't included; the app downloads those again.</p>
+    <a class="btn primary" href="{% url 'collection:backup_download' %}">Download backup</a>
+  </div>
+  <div class="panel">
+    <h3>Restore a backup</h3>
+    <p class="note">Replaces the collection, decks and price history here with the ones in the file. If anything in the file is wrong, nothing is changed.</p>
+    <form method="post" enctype="multipart/form-data" class="stack">
+      {% csrf_token %}
+      <label class="sr" for="backup-file">Backup file</label>
+      <input type="file" id="backup-file" name="backup" accept=".json,application/json" required>
+      <label class="check" for="confirm-restore"><input type="checkbox" id="confirm-restore" name="confirm" value="yes" required> Replace what's here with this backup</label>
+      <div><button type="submit" class="btn">Restore</button></div>
+    </form>
+  </div>
+</section>
+{% endblock %}

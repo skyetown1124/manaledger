@@ -56,12 +56,23 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "manaledger.wsgi.application"
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+# Where your collection is stored.
+# - Set DATABASE_URL (for example a free Neon or Supabase Postgres address) to keep
+#   everything in one permanent online database, wherever the app runs.
+#   In GitHub Codespaces, add it as a Codespaces secret named DATABASE_URL.
+# - Without it, the app uses the local file db.sqlite3 in this folder.
+from .dburl import describe as _describe_db, parse as _parse_db_url
+
+if os.environ.get("DATABASE_URL", "").strip():
+    DATABASES = {"default": _parse_db_url(os.environ["DATABASE_URL"])}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
     }
-}
+DATABASE_DESCRIPTION = _describe_db(DATABASES["default"])
 
 AUTH_PASSWORD_VALIDATORS = []
 

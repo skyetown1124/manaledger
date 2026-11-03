@@ -2,3 +2,5 @@ Django>=5.2,<6
 requests>=2.31
 Pillow>=10.0
 pytesseract>=0.3.10
+# Postgres driver, used when DATABASE_URL points at a Postgres database
+psycopg[binary]>=3.1
