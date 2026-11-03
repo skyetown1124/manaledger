@@ -1,0 +1,53 @@
+{% extends "collection/base.html" %}
+{% block title %}Precon decks · Mana Ledger{% endblock %}
+{% block heading %}Precon decks <span class="titlebar-sub">Official preconstructed decks from Wizards</span>{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <form class="section-head filters" method="get">
+    <label for="precon-q">Search</label>
+    <input type="search" id="precon-q" name="q" value="{{ q }}" placeholder="Deck name or set code, e.g. Duskmourn or DSC" class="wide-text">
+    <label for="precon-type">Kind</label>
+    <select id="precon-type" name="type">
+      <option value="" {% if not deck_type %}selected{% endif %}>All kinds</option>
+      {% for t in types %}<option value="{{ t }}" {% if t == deck_type %}selected{% endif %}>{{ t }}</option>{% endfor %}
+    </select>
+    <button type="submit" class="btn primary">Search</button>
+    <span class="spacer"></span>
+    <a class="btn small ghost" href="?refresh=1">Refresh list</a>
+  </form>
+  <p class="note">Decklists come from <a href="https://mtgjson.com" target="_blank" rel="noopener">MTGJSON</a>, which tracks every product Wizards has released, with the exact printings in the box. Building one makes a deck you can check, price and playtest. Tick "I own this" to add its cards to your collection too.</p>
+  {% if error %}<div class="message error">{{ error }}{% if catalog_size %} Showing the saved list.{% endif %}</div>{% endif %}
+</section>
+
+{% if precons %}
+<section class="panel">
+  <div class="section-head"><span>{{ total }} deck{{ total|pluralize }}</span>{% if total > precons|length %}<span class="summary">showing the newest {{ precons|length }}; search to narrow it down</span>{% endif %}</div>
+  <div class="table-wrap">
+    <table class="data precon-table">
+      <thead><tr><th>Deck</th><th>Set</th><th>Released</th><th>Kind</th><th>Build it</th></tr></thead>
+      <tbody>
+        {% for p in precons %}
+          <tr>
+            <td class="strong">{{ p.name }}</td>
+            <td>{{ p.code|upper }}</td>
+            <td>{{ p.release_date|date:"M Y"|default:"–" }}</td>
+            <td class="muted small">{{ p.deck_type }}</td>
+            <td>
+              <form method="post" action="{% url 'collection:precon_build' %}" class="precon-build">
+                {% csrf_token %}
+                <input type="hidden" name="file_name" value="{{ p.file_name }}">
+                <label class="check small" for="own-{{ forloop.counter }}"><input type="checkbox" id="own-{{ forloop.counter }}" name="own" value="1"> I own this</label>
+                <button type="submit" class="btn small primary">Build deck</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% elif not error %}
+<section class="panel empty"><h2>No decks match</h2><p>Try another name, or pick "All kinds".</p></section>
+{% endif %}
+{% endblock %}

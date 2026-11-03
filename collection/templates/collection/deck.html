@@ -145,7 +145,7 @@
 <section class="deck-layout">
   <!-- Deck list -->
   <div class="panel">
-    <div class="section-head"><span>Deck list</span><span class="spacer"></span><span class="summary">{{ stats.deck_count }} cards · {{ stats.value|money }}</span>{% if stats.deck_count %}<a class="btn primary small" href="{% url 'collection:deck_playtest' deck.pk %}">Playtest</a>{% endif %}</div>
+    <div class="section-head"><span>Deck list</span><span class="spacer"></span><span class="summary">{{ stats.deck_count }} cards · {{ stats.value|money }}</span><a class="btn small" href="{% url 'collection:deck_import' deck.pk %}">Import list</a>{% if stats.deck_count %}<a class="btn primary small" href="{% url 'collection:deck_playtest' deck.pk %}">Playtest</a>{% endif %}</div>
     {% if stats.groups %}
       {% for group in stats.groups %}
         <h4 class="group-title">{{ group.label }} <span class="muted">({{ group.count }})</span></h4>
@@ -350,14 +350,58 @@
     <h3>Deck checklist</h3>
     <ul class="checks">
       {% for c in stats.checks %}
-        <li class="{% if c.ok %}ok{% else %}bad{% endif %}">
-          <span class="check-mark" aria-hidden="true">{% if c.ok %}✓{% else %}!{% endif %}</span>
-          <div><strong>{{ c.label }}</strong>{% if c.detail %}<div class="small muted">{{ c.detail }}</div>{% endif %}</div>
+        <li class="{% if c.ok %}ok{% elif c.info %}info{% else %}bad{% endif %}">
+          <span class="check-mark" aria-hidden="true">{% if c.ok %}✓{% elif c.info %}i{% else %}!{% endif %}</span>
+          <div><strong>{{ c.label }}</strong>{% if c.detail %}<div class="small muted">{{ c.detail }}</div>{% endif %}{% if c.info %}<div class="small"><a href="#needs">See what to buy</a></div>{% endif %}</div>
         </li>
       {% endfor %}
     </ul>
   </div>
 </section>
+
+{% if stats.needs %}
+<section class="panel needs-panel" id="needs">
+  <div class="section-head">
+    <span>Cards you need</span><span class="spacer"></span>
+    <span class="summary">{{ stats.need_copies }} card{{ stats.need_copies|pluralize }}{% if stats.need_cost %} · about <strong>{{ stats.need_cost|money }}</strong>{% endif %}{% if stats.need_unpriced %} · {{ stats.need_unpriced }} without a price{% endif %}</span>
+  </div>
+  <p class="note">Cards this deck uses that aren't in your collection, or not enough copies. Any printing you own counts. Basic lands are left out. Prices are for the printing in the deck; cheaper printings may exist.</p>
+  <div class="needs-layout">
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>Card</th><th class="num">Deck uses</th><th class="num">You own</th><th class="num">Need</th><th class="num">Each</th><th class="num">Cost</th></tr></thead>
+        <tbody>
+          {% for n in stats.needs %}
+            <tr>
+              <td><a href="{% url 'collection:card' n.card_id %}">{{ n.name }}</a> <span class="muted small">{{ n.set_code|upper }} #{{ n.collector_number }}</span></td>
+              <td class="num">{{ n.used }}</td>
+              <td class="num">{{ n.owned }}</td>
+              <td class="num strong">{{ n.need }}</td>
+              <td class="num">{{ n.price|money }}</td>
+              <td class="num strong">{{ n.cost|money }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <label class="kpi-label" for="buy-text">Shopping list</label>
+      <textarea id="buy-text" class="export" rows="10" readonly>{{ buy_list }}</textarea>
+      <div class="row-actions">
+        <button type="button" class="btn" data-copy="buy-text">Copy shopping list</button>
+        <span class="small muted" role="status" id="buy-status"></span>
+      </div>
+      <p class="note">Pastes into TCGplayer Mass Entry, Card Kingdom's deck builder, or most store "buy a list" boxes.</p>
+      <form method="post" action="{% url 'collection:deck_collect_needed' deck.pk %}" class="stack got-them">
+        {% csrf_token %}
+        <label class="check" for="confirm-got"><input type="checkbox" id="confirm-got" name="confirm" value="yes" required> I've got these cards</label>
+        <div><button type="submit" class="btn primary">Add {{ stats.need_copies }} to my collection</button></div>
+        <span class="small muted">Adds them as non-foil copies of the printings in this deck.</span>
+      </form>
+    </div>
+  </div>
+</section>
+{% endif %}
 
 <section class="grid-2">
   <div class="panel">

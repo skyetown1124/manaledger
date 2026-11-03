@@ -14,8 +14,16 @@
       {% for value, label in formats %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
     </select>
     <button type="submit" class="btn primary">Create deck</button>
+    <span class="spacer"></span>
+    <a class="btn" href="{% url 'collection:precons' %}">Start from a precon</a>
+    <details class="paste-list">
+      <summary>Paste a deck list (optional)</summary>
+      <label class="sr" for="new-deck-cards">Deck list, one card per line</label>
+      <textarea id="new-deck-cards" name="cards" rows="8" class="export" placeholder="Commander&#10;1 Atraxa, Praetors' Voice (2X2) 190&#10;&#10;Deck&#10;1 Sol Ring&#10;1 Arcane Signet&#10;36 Forest"></textarea>
+      <span class="small muted">From Moxfield, Archidekt, MTG Arena or EDHREC. You'll see the check before anything is added.</span>
+    </details>
   </form>
-  <p class="note">Decks are built from cards in your library, so a deck can only use as many copies as you own. Basic lands are the exception: add as many as you need. One card can be in several decks.</p>
+  <p class="note">Build from cards in your library, paste a list from another site, or start from an official precon. Cards you don't own yet go on the deck's shopping list.</p>
   {% if not library_size %}
     <div class="message">Your library is empty. <a href="{% url 'collection:add' %}">Add some cards</a> first, then build a deck from them.</div>
   {% endif %}
@@ -34,6 +42,7 @@
           <span><strong>{{ s.stats.deck_count }}</strong>{% if s.stats.target %} / {{ s.stats.target }}{% endif %} cards</span>
           <span><strong>{{ s.stats.value|money }}</strong></span>
         </div>
+        {% if s.stats.need_copies %}<div class="deck-tile-needs">{{ s.stats.need_copies }} card{{ s.stats.need_copies|pluralize }} to buy{% if s.stats.need_cost %} · {{ s.stats.need_cost|money }}{% endif %}</div>{% endif %}
         {% if s.bracket %}
           <div class="deck-tile-bracket{% if s.bracket.plays_above %} over{% endif %}">
             Bracket {{ s.bracket.bracket }} · {{ s.bracket.name }}

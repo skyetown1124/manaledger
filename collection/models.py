@@ -249,3 +249,20 @@ class GlossaryTerm(models.Model):
 
     def __str__(self):
         return self.term
+
+
+class Precon(models.Model):
+    """An official preconstructed deck in MTGJSON's catalog (cached; cards fetched on build)."""
+
+    file_name = models.CharField(max_length=200, unique=True)
+    code = models.CharField(max_length=20, blank=True)
+    name = models.CharField(max_length=200)
+    release_date = models.DateField(null=True, blank=True)
+    deck_type = models.CharField(max_length=60, blank=True)
+    fetched_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ["-release_date", "name"]
+
+    def __str__(self):
+        return f"{self.name} ({self.code})"

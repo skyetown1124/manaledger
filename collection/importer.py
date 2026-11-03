@@ -8,8 +8,11 @@ Accepted line formats (the same ones MTG Arena, Moxfield and Archidekt export):
     1 Sol Ring (CMM) 410 *F*          *F* or "foil" = foil, *E* or "etched" = etched foil
     [2XM] works the same as (2XM).
 
-Blank lines, "Deck" / "Sideboard" / "Commander" headers and lines starting with
-# or // are skipped.
+Section headers put cards in a deck section: "Commander", "Deck" / "Mainboard",
+"Sideboard" (also "Companion"); cards under "Maybeboard" are skipped. Inline tags
+work too: Moxfield's *CMDR*, Archidekt's [Commander] / [Sideboard] / [Maybeboard]
+(other [Category] tags are ignored), and MTGO's "SB:" prefix. Blank lines and
+lines starting with # or // are skipped.
 """
 import re
 import unicodedata
@@ -27,7 +30,42 @@ LINE_RE = re.compile(
     \s*$""",
     re.X | re.I,
 )
-HEADER_RE = re.compile(r"^(deck|main ?deck|mainboard|sideboard|commander|companion|maybeboard|about|name\b.*)$", re.I)
+HEADER_RE = re.compile(
+    r"^(deck|main ?deck|main ?board|main|sideboard|side ?board|commanders?|companion|maybe ?board|considering|about|name\b.*)"
+    r"\s*(\(\d+\))?:?$", re.I)
+SECTION_BOARDS = {
+    "deck": "main", "maindeck": "main", "mainboard": "main", "main": "main",
+    "sideboard": "side", "companion": "side",
+    "commander": "commander", "commanders": "commander",
+    "maybeboard": None, "considering": None,
+}
+BRACKET_TAG_RE = re.compile(r"\s*\[([^\]]*)\]")
+SET_CODE_RE = re.compile(r"^[A-Za-z0-9]{2,6}$")
+
+
+def _board_tags(text):
+    """Pull deck-section tags out of a line. Returns (cleaned text, board or None, skip?)."""
+    board, skip = None, False
+    if re.search(r"\*CMDR\*", text, re.I):
+        board = "commander"
+        text = re.sub(r"\s*\*CMDR\*", "", text, flags=re.I)
+    if re.match(r"^SB:\s*", text, re.I):
+        board = "side"
+        text = re.sub(r"^SB:\s*", "", text, flags=re.I)
+    has_paren_set = bool(re.search(r"\([A-Za-z0-9]{2,6}\)", text))
+    for m in list(BRACKET_TAG_RE.finditer(text)):
+        tag = m.group(1)
+        if not has_paren_set and SET_CODE_RE.match(tag):
+            continue  # "[2XM]" is a set code, not a tag
+        lowered = tag.lower()
+        if "maybeboard" in lowered or "considering" in lowered:
+            skip = True
+        elif "commander" in lowered:
+            board = "commander"
+        elif "sideboard" in lowered:
+            board = "side"
+        text = text.replace(m.group(0), "", 1)
+    return text.strip(), board, skip
 
 
 @dataclass
@@ -39,6 +77,7 @@ class Line:
     set_code: str = ""
     collector_number: str = ""
     finish: str = "nonfoil"
+    board: str = "main"
 
     @property
     def identifier(self):
@@ -95,6 +134,20 @@ class ImportResult:
             merged[key] = merged.get(key, 0) + m.line.quantity
         return [{"id": cid, "finish": fin, "quantity": qty} for (cid, fin), qty in merged.items()]
 
+    def deck_items(self):
+        """Merged {id, quantity, board} rows, ready to add to a deck."""
+        merged = {}
+        for m in self.matches:
+            key = (m.card["scryfall_id"], m.line.board)
+            merged[key] = merged.get(key, 0) + m.line.quantity
+        return [{"id": cid, "board": board, "quantity": qty} for (cid, board), qty in merged.items()]
+
+    def board_counts(self):
+        counts = {}
+        for m in self.matches:
+            counts[m.line.board] = counts.get(m.line.board, 0) + m.line.quantity
+        return counts
+
 
 def normalize(name):
     text = (name or "").replace("’", "'").replace("‘", "'")
@@ -116,9 +169,21 @@ def parse_lines(text):
     if len(rows) > MAX_LINES:
         problems.append(Problem(0, "", f"That's {len(rows)} lines. Import up to {MAX_LINES} at a time."))
         rows = rows[:MAX_LINES]
+    section = "main"
     for number, raw in enumerate(rows, start=1):
         text_line = raw.strip()
-        if not text_line or text_line.startswith(("#", "//")) or HEADER_RE.match(text_line):
+        if not text_line or text_line.startswith(("#", "//")):
+            continue
+        header = HEADER_RE.match(text_line)
+        if header:
+            key = re.sub(r"\s+", "", header.group(1).lower())
+            if key in SECTION_BOARDS:
+                section = SECTION_BOARDS[key]
+            continue
+        if section is None:
+            continue  # maybeboard
+        text_line, tagged_board, skip = _board_tags(text_line)
+        if skip or not text_line:
             continue
         match = LINE_RE.match(text_line)
         if not match or not match.group("name").strip():
@@ -135,6 +200,7 @@ def parse_lines(text):
             set_code=(match.group("set") or "").lower(),
             collector_number=(match.group("cn") or "").lower(),
             finish=finish,
+            board=tagged_board or section,
         ))
     return lines, problems
 

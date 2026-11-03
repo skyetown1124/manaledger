@@ -13,8 +13,8 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from . import decks as deckrules
-from . import brackets, importer, ocr, rules, scryfall, search, services, spellbook
-from .models import (Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, GlossaryTerm, PriceSnapshot,
+from . import brackets, importer, ocr, precons, rules, scryfall, search, services, spellbook
+from .models import (Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, GlossaryTerm, Precon, PriceSnapshot,
                      Rule, RulesEdition)
 from .stats import build_dashboard
 
@@ -435,7 +435,15 @@ def _board_from(deck, value):
     return value if value in allowed else "main"
 
 
-def _deck_entries(deck, owned):
+def _owned_by_name():
+    """card name -> copies you own of any printing, any finish."""
+    return dict(CollectionItem.objects.values("card__name").annotate(n=Sum("quantity"))
+                .values_list("card__name", "n"))
+
+
+def _deck_entries(deck, owned=None, by_name=None):
+    if by_name is None:
+        by_name = _owned_by_name()
     rows = []
     for entry in deck.entries.all():
         c = entry.card
@@ -445,7 +453,7 @@ def _deck_entries(deck, owned):
             "type_line": c.type_line, "mana_cost": c.mana_cost, "cmc": c.cmc, "colors": c.colors,
             "color_identity": c.color_identity, "oracle_text": c.oracle_text,
             "legalities": c.legalities or {}, "details_loaded": c.details_loaded,
-            "price": _f(c.best_price), "owned": owned.get(c.id, 0), "is_basic": c.is_basic_land,
+            "price": _f(c.best_price), "owned": by_name.get(c.name, 0), "is_basic": c.is_basic_land,
             "scryfall_uri": c.scryfall_uri, "image_url": c.image_url,
             "limit": _copy_limit(deck, c),
             "game_changer": c.game_changer,
@@ -472,9 +480,10 @@ def _bracket(deck, entries, stats=None):
 
 def deck_list(request):
     owned = _owned_counts()
+    by_name = _owned_by_name()
     summaries = []
     for deck in Deck.objects.prefetch_related("entries__card"):
-        entries = _deck_entries(deck, owned)
+        entries = _deck_entries(deck, owned, by_name)
         stats = deckrules.analyze(deck.format, entries)
         summaries.append({"deck": deck, "stats": stats, "bracket": _bracket(deck, entries, stats)})
     return render(request, "collection/decks.html", {
@@ -493,6 +502,10 @@ def deck_create(request):
         messages.error(request, "Give the deck a name.")
         return redirect("collection:decks")
     deck = Deck.objects.create(name=name, format=fmt, description=request.POST.get("description", "").strip())
+    cards = request.POST.get("cards", "").strip()
+    if cards:
+        # A pasted list: check it now and show the preview for this new deck.
+        return _deck_import_preview(request, deck, cards)
     messages.success(request, f"Created {deck.name}. Add cards from your library on the right.")
     return redirect("collection:deck", pk=deck.pk)
 
@@ -500,7 +513,7 @@ def deck_create(request):
 def deck_detail(request, pk):
     deck = get_object_or_404(Deck.objects.prefetch_related("entries__card"), pk=pk)
     owned = _owned_counts()
-    entries = _deck_entries(deck, owned)
+    entries = _deck_entries(deck, owned, _owned_by_name())
     stats = deckrules.analyze(deck.format, entries)
     bracket = _bracket(deck, entries, stats)
 
@@ -555,6 +568,7 @@ def deck_detail(request, pk):
         "chart_data": {"curve": stats["curve"], "symbols": stats["symbols"]},
         "bracket": bracket, "bracket_choices": Deck.BRACKET_CHOICES,
         "bracket_names": brackets.BRACKET_NAMES,
+        "buy_list": deckrules.buy_list_text(stats["needs"]),
         "spellbook_tag_name": brackets.SPELLBOOK_TAG_NAMES.get((deck.spellbook_result or {}).get("bracketTag"), ""),
         "spellbook_bracket": brackets.SPELLBOOK_TAGS.get((deck.spellbook_result or {}).get("bracketTag")),
     })
@@ -884,3 +898,141 @@ def card_detail(request, pk):
         "rulings_error": rulings_error, "keyword_rules": keyword_rules, "owned": owned, "decks": decks,
         "legal": legal, "rules_loaded": RulesEdition.objects.exists(),
     })
+
+
+
+# ------------------------------------------------------------------ Deck list import, needs, precons
+
+def _deck_import_preview(request, deck, text, error=None):
+    result = None
+    if text.strip() and not error:
+        try:
+            result = importer.resolve(text, scryfall.lookup)
+        except scryfall.ScryfallError as exc:
+            error = f"Couldn't check the list. {exc}"
+    counts = result.board_counts() if result else {}
+    return render(request, "collection/deck_import.html", {
+        "active_tab": "decks", "deck": deck, "text": text, "result": result, "error": error,
+        "items_json": json.dumps(result.deck_items()) if result else "[]",
+        "board_counts": [(label, counts.get(key, 0)) for key, label in DeckCard.BOARD_CHOICES if counts.get(key)],
+        "deck_has_cards": deck.entries.exists(),
+    })
+
+
+def deck_import(request, pk):
+    """Paste a deck list (Arena, Moxfield, Archidekt...) into this deck: check, then add."""
+    deck = get_object_or_404(Deck, pk=pk)
+    if request.method != "POST":
+        return _deck_import_preview(request, deck, "")
+    if request.POST.get("action") == "add":
+        try:
+            items = json.loads(request.POST.get("items", "[]"))
+            assert isinstance(items, list) and all({"id", "board", "quantity"} <= set(i) for i in items)
+        except (ValueError, AssertionError):
+            messages.error(request, "That import couldn't be read. Check the list again.")
+            return redirect("collection:deck_import", pk=deck.pk)
+        try:
+            summary = services.import_to_deck(deck, items, replace=request.POST.get("replace") == "1",
+                                              add_to_collection=request.POST.get("collect") == "1")
+        except scryfall.ScryfallError as exc:
+            return _deck_import_preview(request, deck, request.POST.get("cards", ""), f"Nothing was added. {exc}")
+        msg = f"Added {summary['copies']} cards to {deck.name}."
+        if request.POST.get("collect") == "1":
+            msg += " They're in your collection too."
+        if summary["missing"]:
+            msg += f" Scryfall couldn't find {len(summary['missing'])} of them this time."
+        messages.success(request, msg)
+        return redirect("collection:deck", pk=deck.pk)
+    text = request.POST.get("cards", "")
+    if not text.strip():
+        return _deck_import_preview(request, deck, "", "Paste at least one card, one per line.")
+    return _deck_import_preview(request, deck, text)
+
+
+@require_POST
+def deck_collect_needed(request, pk):
+    """After buying the missing cards: add them to the collection (the deck's printings, non-foil)."""
+    deck = get_object_or_404(Deck.objects.prefetch_related("entries__card"), pk=pk)
+    if request.POST.get("confirm") != "yes":
+        messages.error(request, "Tick the box to confirm you've got these cards, then press the button again.")
+        return redirect(reverse("collection:deck", args=[deck.pk]) + "#needs")
+    needs = deckrules.needed_cards(_deck_entries(deck))
+    added = 0
+    with transaction.atomic():
+        for n in needs:
+            item, created = CollectionItem.objects.get_or_create(card_id=n["card_id"], finish="nonfoil",
+                                                                 defaults={"quantity": n["need"]})
+            if not created:
+                item.quantity += n["need"]
+                item.save()
+            added += n["need"]
+        services.record_collection_value()
+    messages.success(request, f"Added {added} card{'s' if added != 1 else ''} to your collection. {deck.name} is complete.")
+    return redirect("collection:deck", pk=deck.pk)
+
+
+def precon_list(request):
+    """Browse official preconstructed decks (MTGJSON) and build one."""
+    error = None
+    try:
+        services_count = precons.refresh_catalog(force=request.GET.get("refresh") == "1")
+    except precons.PreconError as exc:
+        error = str(exc)
+        services_count = Precon.objects.count()
+    q = request.GET.get("q", "").strip()
+    deck_type = request.GET.get("type", "Commander Deck")
+    rows = Precon.objects.all()
+    if deck_type:
+        rows = rows.filter(deck_type=deck_type)
+    for word in q.split():
+        rows = rows.filter(Q(name__icontains=word) | Q(code__iexact=word))
+    types = list(Precon.objects.values_list("deck_type", flat=True).distinct().order_by("deck_type"))
+    total = rows.count()
+    return render(request, "collection/precons.html", {
+        "active_tab": "decks", "precons": rows[:120], "total": total, "q": q, "deck_type": deck_type,
+        "types": [t for t in types if t], "error": error, "catalog_size": services_count,
+    })
+
+
+@require_POST
+def precon_build(request):
+    """Create a deck from an official precon, with its exact printings."""
+    file_name = request.POST.get("file_name", "")
+    precon = Precon.objects.filter(file_name=file_name).first()
+    if not precon:
+        messages.error(request, "That precon isn't in the list. Refresh the precon list and try again.")
+        return redirect("collection:precons")
+    try:
+        data = precons.fetch_deck(file_name)
+        items, by_set = [], []
+        for row in data["rows"]:
+            if row["scryfall_id"]:
+                items.append({"id": row["scryfall_id"], "board": row["board"],
+                              "quantity": row["quantity"], "finish": row["finish"]})
+            else:
+                by_set.append(row)
+        if by_set:  # cards MTGJSON has no Scryfall id for: look them up by set and number
+            found, _ = scryfall.lookup([{"set": r["set"], "collector_number": r["number"]} for r in by_set])
+            ids = {(c["set_code"], c["collector_number"]): c["scryfall_id"] for c in found}
+            for r in by_set:
+                if (r["set"], r["number"]) in ids:
+                    items.append({"id": ids[(r["set"], r["number"])], "board": r["board"],
+                                  "quantity": r["quantity"], "finish": r["finish"]})
+        own = request.POST.get("own") == "1"
+        deck = Deck.objects.create(
+            name=(request.POST.get("name") or precon.name).strip()[:100],
+            format=precons.deck_format(precon.deck_type),
+            description=f"Official precon: {precon.name} ({precon.code})"
+                        + (f", released {precon.release_date:%B %Y}" if precon.release_date else "") + ".",
+        )
+        summary = services.import_to_deck(deck, items, add_to_collection=own)
+    except (precons.PreconError, scryfall.ScryfallError) as exc:
+        messages.error(request, f"The deck wasn't built. {exc}")
+        return redirect("collection:precons")
+    msg = f"Built {deck.name}: {summary['copies']} cards."
+    if own:
+        msg += " Every card is in your collection now."
+    if summary["missing"]:
+        msg += f" Scryfall couldn't find {len(summary['missing'])} card(s)."
+    messages.success(request, msg)
+    return redirect("collection:deck", pk=deck.pk)

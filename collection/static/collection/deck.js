@@ -51,4 +51,20 @@
       }
     });
   }
+
+  // Shopping list copy button.
+  document.querySelectorAll("[data-copy]").forEach(function (button) {
+    const target = document.getElementById(button.dataset.copy);
+    const note = document.getElementById("buy-status");
+    button.addEventListener("click", async function () {
+      try {
+        await navigator.clipboard.writeText(target.value);
+        if (note) note.textContent = "Copied.";
+      } catch (e) {
+        target.focus();
+        target.select();
+        if (note) note.textContent = "Press Ctrl+C (or Cmd+C) to copy.";
+      }
+    });
+  });
 })();

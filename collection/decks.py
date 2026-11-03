@@ -363,11 +363,16 @@ def analyze(fmt, entries):
         if restricted:
             checks.append(_ok(f"Restricted cards: {len(restricted)}", _names(restricted) + " (one copy each)."))
 
-    # Ownership: you can only build with cards in your library (basic lands excepted).
-    short = [f'{e["name"]} (deck uses {e["used"]}, you own {e["owned"]})'
-             for e in _usage(entries) if not e["is_basic"] and e["used"] > e["owned"]]
-    checks.append(_bad("You own every card", "Not enough copies of " + _names(short) + ".") if short
-                  else _ok("You own every card", "Basic lands don't need to be in your library."))
+    # Ownership is information, not a rule: imported lists and precons can include
+    # cards you still need to get. Any printing you own counts (basic lands excepted).
+    needs = needed_cards(entries)
+    short = [f'{n["name"]} (deck uses {n["used"]}, you own {n["owned"]})' for n in needs]
+    if short:
+        check = _bad("You own every card", f"Missing {sum(n['need'] for n in needs)} card(s): " + _names(short) + ".")
+        check["info"] = True
+        checks.append(check)
+    else:
+        checks.append(_ok("You own every card", "Basic lands don't need to be in your library."))
 
     value = sum((e["price"] or 0) * e["quantity"] for e in entries)
     top_symbol = max(symbol_counts.values(), default=0) or 1
@@ -387,19 +392,41 @@ def analyze(fmt, entries):
                     for c in COLORS if symbol_counts[c]],
         "identity": "".join(c for c in COLORS if c in identity),
         "checks": checks,
-        "issues": sum(1 for c in checks if not c["ok"]),
+        "issues": sum(1 for c in checks if not c["ok"] and not c.get("info")),
+        "needs": needs,
+        "need_copies": sum(n["need"] for n in needs),
+        "need_cost": round(sum(n["cost"] for n in needs if n["cost"] is not None), 2),
+        "need_unpriced": sum(1 for n in needs if n["cost"] is None),
         "export": export_text(by_board),
     }
 
 
-def _usage(entries):
-    """One row per printing: how many copies the deck uses across boards vs. owned."""
+def needed_cards(entries):
+    """Cards the deck uses that you don't own enough of, by card name (any printing
+    you own counts). Basic lands are left out. Each row: name, used, owned, need,
+    price (each, for the deck's printing), cost, card_id, set_code."""
     rows = {}
     for e in entries:
-        row = rows.setdefault(e["card_id"], {"name": e["name"], "owned": e["owned"],
-                                             "is_basic": e["is_basic"], "used": 0})
+        if e["is_basic"]:
+            continue
+        row = rows.setdefault(e["name"], {"name": e["name"], "owned": e["owned"], "used": 0,
+                                          "price": e["price"], "card_id": e["card_id"],
+                                          "set_code": e["set_code"], "collector_number": e["collector_number"]})
         row["used"] += e["quantity"]
-    return rows.values()
+        if row["price"] is None:
+            row["price"] = e["price"]
+    needs = []
+    for row in rows.values():
+        row["need"] = max(0, row["used"] - row["owned"])
+        if row["need"]:
+            row["cost"] = round(row["price"] * row["need"], 2) if row["price"] is not None else None
+            needs.append(row)
+    return sorted(needs, key=lambda r: (-(r["cost"] or 0), r["name"]))
+
+
+def buy_list_text(needs):
+    """'1 Card Name' lines, the format TCGplayer, Card Kingdom and most stores accept."""
+    return "\n".join(f'{n["need"]} {n["name"]}' for n in needs)
 
 
 def export_text(by_board):

@@ -92,6 +92,49 @@ def import_items(items):
     return {"cards": printings, "copies": copies, "missing": missing}
 
 
+def import_to_deck(deck, items, replace=False, add_to_collection=False):
+    """Add checked rows [{id, board, quantity, finish?}] to a deck. Cards don't have to be owned.
+
+    replace: clear the deck list first. add_to_collection: also add these copies to your
+    collection (for a precon you bought). Fetches cards from Scryfall 75 at a time.
+    Returns {"cards": entries added, "copies": copies, "missing": [ids]}."""
+    from .models import DeckCard
+
+    boards = {"main", "side", "commander"}
+    wanted = {}
+    for row in items:
+        board = row.get("board") if row.get("board") in boards else "main"
+        qty = max(1, min(99, int(row["quantity"])))
+        wanted.setdefault(row["id"], []).append((board, qty, row.get("finish", "nonfoil")))
+    fresh, missing = scryfall.get_many(list(wanted))
+
+    copies = entries = 0
+    with transaction.atomic():
+        if replace:
+            deck.entries.all().delete()
+        for data in fresh:
+            card = save_card(data)
+            for board, qty, finish in wanted.get(data["scryfall_id"], []):
+                entry, created = DeckCard.objects.get_or_create(deck=deck, card=card, board=board,
+                                                                defaults={"quantity": qty})
+                if not created:
+                    entry.quantity += qty
+                    entry.save()
+                entries += 1
+                copies += qty
+                if add_to_collection:
+                    finish = finish if finish in dict(CollectionItem.FINISH_CHOICES) else "nonfoil"
+                    item, made = CollectionItem.objects.get_or_create(card=card, finish=finish,
+                                                                      defaults={"quantity": qty})
+                    if not made:
+                        item.quantity += qty
+                        item.save()
+        deck.save(update_fields=["updated_at"])
+        if add_to_collection:
+            record_collection_value()
+    return {"cards": entries, "copies": copies, "missing": missing}
+
+
 RULINGS_MAX_AGE_DAYS = 30
 
 

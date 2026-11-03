@@ -622,3 +622,20 @@ kbd { font: 11px ui-monospace, Menlo, Consolas, monospace; border: 1px solid var
 }
 .cards-table td:nth-child(3) { white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* ---- Deck list import, shopping list, precons ---- */
+.checks .info .check-mark { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); font-style: italic; font-family: Georgia, serif; }
+.deck-tile-needs { font-size: 13px; color: var(--gold); font-weight: 600; }
+.paste-list { flex: 1 1 100%; }
+.paste-list summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.paste-list textarea { margin-top: 8px; width: 100%; }
+.needs-panel { border-top: 3px solid var(--gold); }
+.needs-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr); gap: 20px; align-items: start; }
+.needs-layout textarea { width: 100%; margin-top: 6px; }
+.got-them { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+@media (max-width: 860px) { .needs-layout { grid-template-columns: 1fr; } }
+.board-tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; background: var(--chip-bg); border: 1px solid var(--line); }
+.board-tag.board-commander { border-color: var(--gold); color: var(--gold); }
+.board-tag.board-side { color: var(--muted); }
+.precon-build { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.precon-table td { vertical-align: middle; }

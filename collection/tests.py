@@ -1147,3 +1147,189 @@ class CardRulingsTests(TestCase):
     def test_keyword_index(self):
         rulesmod.save(rulesmod.parse(SAMPLE_RULES))
         self.assertEqual(rulesmod.keyword_index(), {"deathtouch": "702.2", "trample": "702.19"})
+
+
+# ------------------------------------------------------------------ Deck list import, shopping list, precons
+
+class DeckListParseTests(TestCase):
+    def test_sections_and_tags(self):
+        text = (
+            "Commander\n1 Atraxa, Praetors' Voice (2X2) 190\n\n"
+            "Deck\n1 Sol Ring (CMM) 410\n4x Lightning Bolt\n"
+            "1 Arcane Signet *CMDR*\n"
+            "1 Counterspell [Sideboard]\n"
+            "SB: 2 Delver of Secrets\n\n"
+            "Sideboard (2)\n1 Negate\n\n"
+            "Maybeboard\n1 Mana Crypt\n\n"
+            "Deck:\n1 Brainstorm [Draw{noDeck}]\n"
+        )
+        lines, problems = importer.parse_lines(text)
+        boards = {l.name: l.board for l in lines}
+        self.assertEqual(problems, [])
+        self.assertEqual(boards["Atraxa, Praetors' Voice"], "commander")
+        self.assertEqual(boards["Sol Ring"], "main")
+        self.assertEqual(boards["Arcane Signet"], "commander")
+        self.assertEqual(boards["Counterspell"], "side")
+        self.assertEqual(boards["Delver of Secrets"], "side")
+        self.assertEqual(boards["Negate"], "side")
+        self.assertEqual(boards["Brainstorm"], "main")   # a new "Deck:" header goes back to main
+        self.assertNotIn("Mana Crypt", boards)            # maybeboard skipped
+
+    def test_no_headers_means_main(self):
+        lines, _ = importer.parse_lines("1 Sol Ring\n2 Lightning Bolt")
+        self.assertEqual({l.board for l in lines}, {"main"})
+
+
+class NeededCardsTests(TestCase):
+    def entry(self, name, qty, owned, price, basic=False):
+        return {"name": name, "quantity": qty, "owned": owned, "price": price, "is_basic": basic,
+                "card_id": 1, "set_code": "tst", "collector_number": "1"}
+
+    def test_needs_and_buy_list(self):
+        from decimal import Decimal
+        entries = [
+            self.entry("Sol Ring", 1, 0, Decimal("1.50")),
+            self.entry("Lightning Bolt", 4, 1, Decimal("2.00")),
+            self.entry("Counterspell", 1, 3, Decimal("1.00")),       # owned enough
+            self.entry("Forest", 30, 0, Decimal("0.10"), basic=True),  # basics never needed
+        ]
+        needs = decks.needed_cards(entries)
+        self.assertEqual([(n["name"], n["need"], n["cost"]) for n in needs],
+                         [("Lightning Bolt", 3, Decimal("6.00")), ("Sol Ring", 1, Decimal("1.50"))])
+        self.assertEqual(decks.buy_list_text(needs), "3 Lightning Bolt\n1 Sol Ring")
+
+    def test_ownership_is_information_not_an_issue(self):
+        ring = make_card("Sol Ring")
+        deck = Deck.objects.create(name="Test", format="casual")
+        DeckCard.objects.create(deck=deck, card=ring, quantity=1)
+        page = self.client.get(reverse("collection:deck", args=[deck.pk]))
+        self.assertContains(page, "Cards you need")
+        self.assertContains(page, "1 Sol Ring")
+        self.assertEqual(page.context["stats"]["issues"], 0)
+
+    def test_any_printing_counts_as_owned(self):
+        old = make_card("Sol Ring", scryfall_id="old-ring", set_code="c13")
+        new = make_card("Sol Ring", scryfall_id="new-ring", set_code="cmm")
+        CollectionItem.objects.create(card=old, quantity=1)
+        deck = Deck.objects.create(name="Test", format="casual")
+        DeckCard.objects.create(deck=deck, card=new, quantity=1)
+        page = self.client.get(reverse("collection:deck", args=[deck.pk]))
+        self.assertEqual(page.context["stats"]["needs"], [])
+
+    def test_collect_needed(self):
+        ring = make_card("Sol Ring")
+        deck = Deck.objects.create(name="Test", format="casual")
+        DeckCard.objects.create(deck=deck, card=ring, quantity=2)
+        url = reverse("collection:deck_collect_needed", args=[deck.pk])
+        self.client.post(url)  # not confirmed
+        self.assertEqual(CollectionItem.objects.count(), 0)
+        self.client.post(url, {"confirm": "yes"})
+        self.assertEqual(CollectionItem.objects.get(card=ring).quantity, 2)
+        page = self.client.get(reverse("collection:deck", args=[deck.pk]))
+        self.assertNotContains(page, "Cards you need")
+
+
+@mock.patch.object(scryfall, "lookup", fake_lookup)
+@mock.patch.object(scryfall, "get_many", fake_get_many)
+class DeckImportViewTests(TestCase):
+    LIST = "Commander\n1 Sol Ring (CMM) 410\n\nDeck\n4 Lightning Bolt (2XM) 117\n1 Counterspell\n\nSideboard\n1 Delver of Secrets\n"
+
+    def test_check_then_add_without_owning(self):
+        deck = Deck.objects.create(name="Imported", format="casual")
+        url = reverse("collection:deck_import", args=[deck.pk])
+        self.assertEqual(self.client.get(url).status_code, 200)
+        page = self.client.post(url, {"action": "check", "cards": self.LIST})
+        self.assertContains(page, "Add 7 cards to Imported")
+        self.assertEqual(deck.entries.count(), 0)
+        done = self.client.post(url, {"action": "add", "items": page.context["items_json"]})
+        self.assertRedirects(done, reverse("collection:deck", args=[deck.pk]))
+        boards = {(e.card.name, e.board): e.quantity for e in deck.entries.select_related("card")}
+        self.assertEqual(boards[("Sol Ring", "commander")], 1)
+        self.assertEqual(boards[("Lightning Bolt", "main")], 4)
+        self.assertEqual(boards[("Delver of Secrets // Insectile Aberration", "side")], 1)
+        self.assertEqual(CollectionItem.objects.count(), 0)  # not owned: they go on the shopping list
+        page = self.client.get(reverse("collection:deck", args=[deck.pk]))
+        self.assertEqual(page.context["stats"]["need_copies"], 7)
+
+    def test_replace_and_add_to_collection(self):
+        deck = Deck.objects.create(name="Imported", format="casual")
+        DeckCard.objects.create(deck=deck, card=make_card("Old Card"), quantity=1)
+        url = reverse("collection:deck_import", args=[deck.pk])
+        page = self.client.post(url, {"action": "check", "cards": "2 Lightning Bolt (2XM) 117"})
+        self.client.post(url, {"action": "add", "items": page.context["items_json"], "replace": "1", "collect": "1"})
+        self.assertEqual([e.card.name for e in deck.entries.all()], ["Lightning Bolt"])
+        self.assertEqual(CollectionItem.objects.get(card__scryfall_id="2xm-117").quantity, 2)
+
+    def test_new_deck_with_pasted_list(self):
+        page = self.client.post(reverse("collection:deck_create"),
+                                {"name": "From paste", "format": "casual", "cards": "1 Sol Ring"})
+        self.assertContains(page, "Add 1 card to From paste")
+        self.assertTrue(Deck.objects.filter(name="From paste").exists())
+
+    def test_bad_items(self):
+        deck = Deck.objects.create(name="Imported", format="casual")
+        self.client.post(reverse("collection:deck_import", args=[deck.pk]), {"action": "add", "items": "[{\"x\": 1}]"})
+        self.assertEqual(deck.entries.count(), 0)
+
+
+DECKLIST_JSON = {"data": [
+    {"code": "CMM", "fileName": "SomeCommanderDeck_CMM", "name": "Some Commander Deck",
+     "releaseDate": "2023-08-04", "type": "Commander Deck"},
+    {"code": "M10", "fileName": "SomeIntroPack_M10", "name": "Some Intro Pack",
+     "releaseDate": "2009-07-17", "type": "Intro Pack"},
+]}
+
+DECK_JSON = {"data": {
+    "code": "CMM", "name": "Some Commander Deck", "type": "Commander Deck",
+    "commander": [{"name": "Sol Ring", "count": 1, "setCode": "CMM", "number": "410", "isFoil": True,
+                   "identifiers": {"scryfallId": "cmm-410"}}],
+    "mainBoard": [
+        {"name": "Lightning Bolt", "count": 3, "setCode": "2XM", "number": "117", "isFoil": False,
+         "identifiers": {"scryfallId": "2xm-117"}},
+        {"name": "Counterspell", "count": 1, "setCode": "MH2", "number": "267", "isFoil": False,
+         "identifiers": {}},  # no Scryfall id: found by set and number
+    ],
+    "sideBoard": [],
+}}
+
+
+@mock.patch.object(scryfall, "lookup", fake_lookup)
+@mock.patch.object(scryfall, "get_many", fake_get_many)
+class PreconTests(TestCase):
+    def fake_get(self, url):
+        return DECKLIST_JSON if url.endswith("DeckList.json") else DECK_JSON
+
+    def test_catalog_and_build(self):
+        from . import precons
+        with mock.patch.object(precons, "_get_json", side_effect=self.fake_get) as get:
+            page = self.client.get(reverse("collection:precons"))
+            self.assertContains(page, "Some Commander Deck")
+            self.assertNotContains(page, "Some Intro Pack")  # Commander decks by default
+            page = self.client.get(reverse("collection:precons") + "?type=")
+            self.assertContains(page, "Some Intro Pack")
+            self.assertEqual(get.call_count, 1)  # catalog cached for a week
+
+            done = self.client.post(reverse("collection:precon_build"),
+                                    {"file_name": "SomeCommanderDeck_CMM", "own": "1"})
+        deck = Deck.objects.get(name="Some Commander Deck")
+        self.assertRedirects(done, reverse("collection:deck", args=[deck.pk]))
+        self.assertEqual(deck.format, "commander")
+        entries = {(e.card.name, e.board): e.quantity for e in deck.entries.select_related("card")}
+        self.assertEqual(entries, {("Sol Ring", "commander"): 1, ("Lightning Bolt", "main"): 3,
+                                   ("Counterspell", "main"): 1})
+        self.assertEqual(CollectionItem.objects.get(card__scryfall_id="cmm-410").finish, "foil")
+        self.assertEqual(sum(CollectionItem.objects.values_list("quantity", flat=True)), 5)
+
+    def test_build_without_owning(self):
+        from . import precons
+        with mock.patch.object(precons, "_get_json", side_effect=self.fake_get):
+            self.client.get(reverse("collection:precons"))
+            self.client.post(reverse("collection:precon_build"), {"file_name": "SomeIntroPack_M10"})
+        self.assertEqual(Deck.objects.get().format, "casual")
+        self.assertEqual(CollectionItem.objects.count(), 0)
+
+    def test_mtgjson_down(self):
+        from . import precons
+        with mock.patch.object(precons, "_get_json", side_effect=precons.PreconError("Couldn't reach MTGJSON: timeout")):
+            page = self.client.get(reverse("collection:precons"))
+        self.assertContains(page, "Couldn&#x27;t reach MTGJSON")

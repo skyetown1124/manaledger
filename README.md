@@ -51,12 +51,14 @@ Open http://127.0.0.1:8000/ and use **Add Cards** to search for your first card.
   the card. Open "Card text" under a card to read it; search terms are
   highlighted.
 - **Decks**: create a deck, pick a format, then search your library on the
-  right side of the deck page and add cards. A deck can only use as many
-  copies of a card as you own (basic lands are unlimited and don't need to be
-  in your library). The deck page shows:
+  right side of the deck page and add cards. Cards added from your library
+  can only use as many copies as you own (basic lands are unlimited). Two
+  other ways to fill a deck, covered in "Deck lists and precons" below: paste
+  a list from Moxfield, Archidekt, Arena or EDHREC, or build an official
+  precon. The deck page shows:
   - a checklist for the format: deck size, copy limit (4, or 1 in Commander),
     sideboard size, commander choice, commander color identity, banned cards,
-    and whether you own every card,
+    and (as information, not a problem to fix) whether you own every card,
   - the deck's value, average mana value, mana curve and colored mana symbols,
   - a plain-text deck list you can copy into MTG Arena, Moxfield or Archidekt.
 
@@ -122,6 +124,33 @@ Open http://127.0.0.1:8000/ and use **Add Cards** to search for your first card.
   and saves today's collection value. Each new day you refresh adds a bar to
   the "value by day" chart, so the history grows the more often you refresh.
 - **Light mode** switches themes and remembers your choice in this browser.
+
+## Deck lists and precons
+
+**Import a deck list.** On a deck page press **Import list**, or paste a list
+into "Paste a deck list" when creating a deck. Paste the text export from
+Moxfield, Archidekt, MTG Arena, MTGO, EDHREC or TappedOut, press **Check
+list**, review the matches, then add them. Section headers (`Commander`,
+`Deck`, `Sideboard`, `Companion`) and tags (`*CMDR*`, `[Commander]`,
+`[Sideboard]`, `SB:`) put each card in the right part of the deck;
+`Maybeboard` and `Considering` sections are skipped. You don't need to own the
+cards. Tick **Replace** to swap out what's already in the deck, or **I own
+these cards** to add them to your collection as well.
+
+**Cards you need.** Every deck page lists the cards it uses that you don't
+own enough copies of (any printing you own counts; basic lands are left out),
+with the price of each and the total. Copy the shopping list into TCGplayer
+Mass Entry or Card Kingdom. Once the cards arrive, tick "I've got these
+cards" and press the button to add them to your collection. Deck tiles on the
+Decks tab show how many cards each deck still needs.
+
+**Precons.** **Decks → Start from a precon** lists every official
+preconstructed deck Wizards has released (Commander decks by default; pick
+"All kinds" for Challenger decks, starter kits and so on). The list and the
+exact printings come from [MTGJSON](https://mtgjson.com), free open data; the
+list is refreshed weekly, or press **Refresh list**. **Build deck** makes a
+Commander deck from a Commander precon (others are Casual). Tick **I own
+this** to add every card to your collection too, foils included.
 
 ## Rules and rulings
 
@@ -259,9 +288,10 @@ python manage.py refresh_prices
 | `collection/brackets.py` | Commander bracket rules, Game Changers list, impact card points, known combos |
 | `collection/spellbook.py` | Commander Spellbook bracket and combo check |
 | `collection/ocr.py` | Reads card photos with Tesseract and identifies each card |
-| `collection/importer.py` | Reads a pasted card list and matches each line to a Scryfall printing |
+| `collection/importer.py` | Reads a pasted card or deck list (with Commander/Deck/Sideboard sections) and matches each line to a Scryfall printing |
+| `collection/precons.py` | Official precon catalog and decklists from MTGJSON |
 | `collection/search.py` | Turns a search like `t:creature mv<=3` into a database filter, plus a plain-English summary |
-| `collection/decks.py` | Deck rules and stats: format checks, mana curve, colors, export text (plain Python, no database calls) |
+| `collection/decks.py` | Deck rules and stats: format checks, mana curve, colors, cards you need and the shopping list, export text (plain Python, no database calls) |
 | `collection/stats.py` | All dashboard math, in plain Python (no database calls), so it's easy to test |
 | `collection/views.py` | Dashboard, My Cards, Add Cards, Decks, refresh, and the autocomplete endpoint |
 | `collection/static/collection/playtest-engine.js` | Playtest rules (shuffle, mulligans, zones, turns, odds) as plain functions |
