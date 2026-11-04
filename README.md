@@ -175,6 +175,18 @@ Mass Entry or Card Kingdom. Once the cards arrive, tick "I've got these
 cards" and press the button to add them to your collection. Deck tiles on the
 Decks tab show how many cards each deck still needs.
 
+**Archidekt.** **Decks → Import from Archidekt**: enter your Archidekt
+username (or profile link, like `archidekt.com/u/yourname`) and press **Link
+account**. No password is needed; only the username is saved. Your public decks
+are listed, each with an **Import** button that copies the exact printings,
+puts the commander in the command zone and the Sideboard category in the
+sideboard, and skips the Maybeboard. Unlisted decks don't appear in the list,
+but you can paste a deck's link into **Import by link**; private decks can't be
+read. After changing a deck on Archidekt, press **Update from Archidekt** on its
+deck page to replace the list here with the current one. Archidekt has no
+official API, so this uses the public data its own site reads; if Archidekt
+changes it, the app shows a message instead of importing.
+
 **Precons.** **Decks → Start from a precon** lists every official
 preconstructed deck Wizards has released (Commander decks by default; pick
 "All kinds" for Challenger decks, starter kits and so on). The list and the
@@ -321,6 +333,8 @@ python manage.py refresh_prices
 | `collection/ocr.py` | Reads card photos with Tesseract and identifies each card |
 | `collection/importer.py` | Reads a pasted card or deck list (with Commander/Deck/Sideboard sections) and matches each line to a Scryfall printing |
 | `collection/precons.py` | Official precon catalog and decklists from MTGJSON |
+| `collection/archidekt.py` | Public Archidekt decks: a user's deck list and one deck's cards |
+| `collection/backup.py` | Backup download and all-or-nothing restore |
 | `collection/search.py` | Turns a search like `t:creature mv<=3` into a database filter, plus a plain-English summary |
 | `collection/decks.py` | Deck rules and stats: format checks, mana curve, colors, cards you need and the shopping list, export text (plain Python, no database calls) |
 | `collection/stats.py` | All dashboard math, in plain Python (no database calls), so it's easy to test |

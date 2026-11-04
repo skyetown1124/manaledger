@@ -27,6 +27,18 @@
   </div>
 </section>
 
+{% if deck.source == "archidekt" %}
+<section class="panel source-strip">
+  <span>From <a href="{{ deck.source_url }}" target="_blank" rel="noopener">Archidekt</a>{% if deck.synced_at %} · copied {{ deck.synced_at|date:"M j, Y g:i A" }}{% endif %}</span>
+  <span class="spacer"></span>
+  <form method="post" action="{% url 'collection:archidekt_sync' deck.pk %}" class="precon-build">
+    {% csrf_token %}
+    <label class="check small" for="confirm-sync"><input type="checkbox" id="confirm-sync" name="confirm" value="yes" required> Replace this list with Archidekt's</label>
+    <button type="submit" class="btn small">Update from Archidekt</button>
+  </form>
+</section>
+{% endif %}
+
 {% if bracket %}
 <section class="panel bracket-panel" id="bracket">
   <div class="bracket-head">

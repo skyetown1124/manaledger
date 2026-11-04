@@ -14,8 +14,8 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from . import decks as deckrules
-from . import backup, brackets, importer, ocr, precons, rules, scryfall, search, services, spellbook
-from .models import (Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, GlossaryTerm, Precon, PriceSnapshot,
+from . import archidekt, backup, brackets, importer, ocr, precons, rules, scryfall, search, services, spellbook
+from .models import (Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, GlossaryTerm, LinkedProfile, Precon, PriceSnapshot,
                      Rule, RulesEdition)
 from .stats import build_dashboard
 
@@ -1005,26 +1005,14 @@ def precon_build(request):
         return redirect("collection:precons")
     try:
         data = precons.fetch_deck(file_name)
-        items, by_set = [], []
-        for row in data["rows"]:
-            if row["scryfall_id"]:
-                items.append({"id": row["scryfall_id"], "board": row["board"],
-                              "quantity": row["quantity"], "finish": row["finish"]})
-            else:
-                by_set.append(row)
-        if by_set:  # cards MTGJSON has no Scryfall id for: look them up by set and number
-            found, _ = scryfall.lookup([{"set": r["set"], "collector_number": r["number"]} for r in by_set])
-            ids = {(c["set_code"], c["collector_number"]): c["scryfall_id"] for c in found}
-            for r in by_set:
-                if (r["set"], r["number"]) in ids:
-                    items.append({"id": ids[(r["set"], r["number"])], "board": r["board"],
-                                  "quantity": r["quantity"], "finish": r["finish"]})
+        items, _ = services.rows_to_items(data["rows"])
         own = request.POST.get("own") == "1"
         deck = Deck.objects.create(
             name=(request.POST.get("name") or precon.name).strip()[:100],
             format=precons.deck_format(precon.deck_type),
             description=f"Official precon: {precon.name} ({precon.code})"
                         + (f", released {precon.release_date:%B %Y}" if precon.release_date else "") + ".",
+            source="precon", source_id=file_name, synced_at=timezone.now(),
         )
         summary = services.import_to_deck(deck, items, add_to_collection=own)
     except (precons.PreconError, scryfall.ScryfallError) as exc:
@@ -1069,3 +1057,98 @@ def backup_download(request):
     response = HttpResponse(backup.dump(), content_type="application/json")
     response["Content-Disposition"] = f'attachment; filename="{backup.filename()}"'
     return response
+
+
+
+# ------------------------------------------------------------------ Archidekt
+
+def archidekt_page(request):
+    """Link an Archidekt username, list its public decks, and import them."""
+    profile = LinkedProfile.objects.filter(site="archidekt").first()
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if action == "link":
+            try:
+                name = archidekt.clean_username(request.POST.get("username"))
+            except archidekt.ArchidektError as exc:
+                messages.error(request, str(exc))
+            else:
+                LinkedProfile.objects.update_or_create(site="archidekt", defaults={"username": name})
+                messages.success(request, f"Linked Archidekt account {name}.")
+        elif action == "unlink" and profile:
+            profile.delete()
+            messages.success(request, "Unlinked your Archidekt account. Decks you imported stay here.")
+        return redirect("collection:archidekt")
+
+    decks, error = [], None
+    if profile:
+        try:
+            decks = archidekt.user_decks(profile.username)
+        except archidekt.ArchidektError as exc:
+            error = str(exc)
+    imported = {d.source_id: d for d in Deck.objects.filter(source="archidekt")}
+    for d in decks:
+        d["mine"] = imported.get(str(d["id"]))
+    return render(request, "collection/archidekt.html", {
+        "active_tab": "decks", "profile": profile, "decks": decks, "error": error,
+    })
+
+
+def _archidekt_import(deck, number, own=False):
+    """Copy an Archidekt deck's list into `deck`, replacing what's there."""
+    data = archidekt.fetch_deck(number)
+    items, missing = services.rows_to_items(data["rows"])
+    if not items:
+        raise archidekt.ArchidektError("None of that deck's cards could be found on Scryfall.")
+    summary = services.import_to_deck(deck, items, replace=True, add_to_collection=own)
+    deck.source, deck.source_id, deck.source_url = "archidekt", str(data["id"]), data["url"]
+    deck.synced_at = timezone.now()
+    deck.save(update_fields=["source", "source_id", "source_url", "synced_at", "updated_at"])
+    summary["missing"] = list(summary["missing"]) + missing
+    return data, summary
+
+
+@require_POST
+def archidekt_import(request):
+    """Import one Archidekt deck (from the list, or a pasted deck link) as a new deck."""
+    number = archidekt.deck_id(request.POST.get("deck", ""))
+    if not number:
+        messages.error(request, "Paste an Archidekt deck link, like archidekt.com/decks/123456.")
+        return redirect("collection:archidekt")
+    existing = Deck.objects.filter(source="archidekt", source_id=str(number)).first()
+    if existing:
+        messages.error(request, f"{existing.name} is already imported. Use \"Update from Archidekt\" on it instead.")
+        return redirect("collection:deck", pk=existing.pk)
+    try:
+        with transaction.atomic():
+            deck = Deck.objects.create(name=f"Archidekt deck {number}")
+            data, summary = _archidekt_import(deck, number, own=request.POST.get("own") == "1")
+            deck.name = data["name"][:100]
+            deck.format = data["format"]
+            deck.description = f"Imported from Archidekt: {data['url']}"
+            deck.save(update_fields=["name", "format", "description"])
+    except (archidekt.ArchidektError, scryfall.ScryfallError) as exc:
+        messages.error(request, f"The deck wasn't imported. {exc}")
+        return redirect("collection:archidekt")
+    msg = f"Imported {deck.name}: {summary['copies']} cards."
+    if summary["missing"]:
+        msg += f" {len(summary['missing'])} card(s) couldn't be found on Scryfall."
+    messages.success(request, msg)
+    return redirect("collection:deck", pk=deck.pk)
+
+
+@require_POST
+def archidekt_sync(request, pk):
+    """Replace a deck's list with the current one on Archidekt."""
+    deck = get_object_or_404(Deck, pk=pk, source="archidekt")
+    if request.POST.get("confirm") != "yes":
+        messages.error(request, "Tick the box to confirm replacing this list, then press Update again.")
+        return redirect("collection:deck", pk=deck.pk)
+    try:
+        with transaction.atomic():
+            _, summary = _archidekt_import(deck, deck.source_id)
+    except (archidekt.ArchidektError, scryfall.ScryfallError) as exc:
+        messages.error(request, f"Nothing was changed. {exc}")
+    else:
+        messages.success(request, f"Updated {deck.name} from Archidekt: {summary['copies']} cards.")
+    return redirect("collection:deck", pk=deck.pk)

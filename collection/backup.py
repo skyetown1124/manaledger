@@ -11,10 +11,10 @@ from django.core.management.color import no_style
 from django.db import connection, transaction
 from django.utils import timezone
 
-from .models import Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, PriceSnapshot
+from .models import Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, LinkedProfile, PriceSnapshot
 
 # Order matters on restore: cards before anything that points at them.
-MODELS = [Card, CollectionItem, PriceSnapshot, CollectionSnapshot, Deck, DeckCard]
+MODELS = [Card, CollectionItem, PriceSnapshot, CollectionSnapshot, Deck, DeckCard, LinkedProfile]
 LABELS = {m._meta.label_lower: m for m in MODELS}
 
 
@@ -61,6 +61,7 @@ def restore(raw):
         with transaction.atomic():
             Deck.objects.all().delete()          # deck cards go with them
             CollectionSnapshot.objects.all().delete()
+            LinkedProfile.objects.all().delete()
             Card.objects.all().delete()          # owned copies and price history go with them
             for obj in serializers.deserialize("json", json.dumps(data)):
                 obj.save()

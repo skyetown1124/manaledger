@@ -1,0 +1,71 @@
+{% extends "collection/base.html" %}
+{% block title %}Archidekt · Mana Ledger{% endblock %}
+{% block heading %}Archidekt decks{% if profile %} <span class="titlebar-sub">{{ profile.username }}</span>{% endif %}{% endblock %}
+
+{% block content %}
+<section class="panel">
+  {% if profile %}
+    <div class="section-head">
+      <span>Linked to <a href="https://archidekt.com/u/{{ profile.username|urlencode }}" target="_blank" rel="noopener">{{ profile.username }}</a> on Archidekt</span>
+      <span class="spacer"></span>
+      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="unlink"><button type="submit" class="btn small ghost">Unlink</button></form>
+    </div>
+    <p class="note">Your public decks are listed below. Import one to check it, price it, see what you still need and playtest it. Change the deck on Archidekt later and press <strong>Update from Archidekt</strong> on its deck page to bring the changes over.</p>
+  {% else %}
+    <form method="post" class="section-head filters">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="link">
+      <label for="archidekt-user">Archidekt username</label>
+      <input type="text" id="archidekt-user" name="username" placeholder="yourname or archidekt.com/u/yourname" class="wide-text" required>
+      <button type="submit" class="btn primary">Link account</button>
+    </form>
+    <p class="note">Only your username is saved; no password is needed. The app can see the decks you've made public on Archidekt. Unlisted and private decks don't show up in the list, but you can import an unlisted deck by pasting its link below.</p>
+  {% endif %}
+  <form method="post" action="{% url 'collection:archidekt_import' %}" class="section-head filters">
+    {% csrf_token %}
+    <label for="archidekt-link">Import by link</label>
+    <input type="text" id="archidekt-link" name="deck" placeholder="https://archidekt.com/decks/123456/my_deck" class="wide-text" required>
+    <label class="check small" for="archidekt-own-link"><input type="checkbox" id="archidekt-own-link" name="own" value="1"> I own these cards</label>
+    <button type="submit" class="btn">Import deck</button>
+  </form>
+  {% if error %}<div class="message error">{{ error }}</div>{% endif %}
+</section>
+
+{% if profile and not error %}
+<section class="panel">
+  <div class="section-head"><span>{{ decks|length }} public deck{{ decks|length|pluralize }}</span></div>
+  {% if decks %}
+    <div class="table-wrap">
+      <table class="data precon-table">
+        <thead><tr><th>Deck</th><th>Format</th><th class="num">Cards</th><th>Updated</th><th>Here</th></tr></thead>
+        <tbody>
+          {% for d in decks %}
+            <tr>
+              <td class="strong"><a href="{{ d.url }}" target="_blank" rel="noopener">{{ d.name }}</a></td>
+              <td>{{ d.format_name }}</td>
+              <td class="num">{{ d.size|default:"–" }}</td>
+              <td>{{ d.updated|default:"–" }}</td>
+              <td>
+                {% if d.mine %}
+                  <a class="btn small" href="{% url 'collection:deck' d.mine.pk %}">Open</a>
+                  <span class="small muted">imported {{ d.mine.synced_at|date:"M j" }}</span>
+                {% else %}
+                  <form method="post" action="{% url 'collection:archidekt_import' %}" class="precon-build">
+                    {% csrf_token %}
+                    <input type="hidden" name="deck" value="{{ d.id }}">
+                    <label class="check small" for="own-{{ d.id }}"><input type="checkbox" id="own-{{ d.id }}" name="own" value="1"> I own these</label>
+                    <button type="submit" class="btn small primary">Import</button>
+                  </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="note">No public decks found for {{ profile.username }}. Check the spelling, or make a deck public on Archidekt (Deck settings → Privacy).</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

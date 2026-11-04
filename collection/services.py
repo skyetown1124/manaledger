@@ -135,6 +135,43 @@ def import_to_deck(deck, items, replace=False, add_to_collection=False):
     return {"cards": entries, "copies": copies, "missing": missing}
 
 
+def rows_to_items(rows):
+    """Turn deck rows from another site [{scryfall_id, name, set, number, quantity, board, finish}]
+    into import_to_deck items. Rows without a Scryfall id are looked up by set and number,
+    then by name. Returns (items, names_not_found)."""
+    items, by_set, by_name = [], [], []
+    for row in rows:
+        if row.get("scryfall_id"):
+            items.append({"id": row["scryfall_id"], "board": row["board"],
+                          "quantity": row["quantity"], "finish": row["finish"]})
+        elif row.get("set") and row.get("number"):
+            by_set.append(row)
+        elif row.get("name"):
+            by_name.append(row)
+    if by_set:
+        found, _ = scryfall.lookup([{"set": r["set"], "collector_number": r["number"]} for r in by_set])
+        ids = {(c["set_code"], c["collector_number"]): c["scryfall_id"] for c in found}
+        for r in by_set:
+            if (r["set"], r["number"]) in ids:
+                items.append({"id": ids[(r["set"], r["number"])], "board": r["board"],
+                              "quantity": r["quantity"], "finish": r["finish"]})
+            elif r.get("name"):
+                by_name.append(r)
+    missing = []
+    if by_name:
+        found, _ = scryfall.lookup([{"name": r["name"]} for r in by_name])
+        ids = {c["name"].lower(): c["scryfall_id"] for c in found}
+        for c in found:  # "Delver of Secrets" matches "Delver of Secrets // Insectile Aberration"
+            ids.setdefault(c["name"].split(" // ")[0].lower(), c["scryfall_id"])
+        for r in by_name:
+            hit = ids.get(r["name"].lower())
+            if hit:
+                items.append({"id": hit, "board": r["board"], "quantity": r["quantity"], "finish": r["finish"]})
+            else:
+                missing.append(r["name"])
+    return items, missing
+
+
 RULINGS_MAX_AGE_DAYS = 30
 
 

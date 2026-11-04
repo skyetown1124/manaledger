@@ -11,7 +11,7 @@ import tempfile
 from django.core.management import call_command
 
 from . import decks, importer, scryfall, search
-from .models import Card, CollectionItem, Deck, DeckCard
+from .models import Card, CollectionItem, Deck, DeckCard, LinkedProfile
 
 LEGAL_ALL = {f: "legal" for f in ("commander", "standard", "pioneer", "modern", "legacy", "vintage", "pauper")}
 
@@ -1434,3 +1434,135 @@ class BackupTests(TestCase):
             path.write_bytes(raw)
             call_command("loaddata", str(path), verbosity=0)
         self.assertEqual(CollectionItem.objects.get().quantity, 2)
+
+
+# ------------------------------------------------------------------ Archidekt
+
+ARCHIDEKT_LIST = {"count": 3, "next": None, "results": [
+    {"id": 111, "name": "Sol Ring Tribal", "size": 100, "updatedAt": "2026-10-30T12:00:00Z", "deckFormat": 3,
+     "owner": {"id": 9, "username": "SkyeTown"}},
+    {"id": 222, "name": "Burn", "size": 60, "updatedAt": "2026-09-01T12:00:00Z", "deckFormat": 2,
+     "owner": {"id": 9, "username": "skyetown"}},
+    {"id": 333, "name": "Someone else's", "size": 60, "updatedAt": "2026-09-01T12:00:00Z", "deckFormat": 2,
+     "owner": {"id": 10, "username": "skyetown2"}},
+]}
+
+ARCHIDEKT_DECK = {
+    "id": 111, "name": "Sol Ring Tribal", "deckFormat": 3,
+    "categories": [
+        {"name": "Commander", "includedInDeck": True, "isPremier": True},
+        {"name": "Ramp", "includedInDeck": True, "isPremier": False},
+        {"name": "Removal", "includedInDeck": True, "isPremier": False},
+        {"name": "Sideboard", "includedInDeck": False, "isPremier": False},
+        {"name": "Maybeboard", "includedInDeck": False, "isPremier": False},
+    ],
+    "cards": [
+        {"quantity": 1, "categories": ["Commander"], "modifier": "Foil", "deletedAt": None,
+         "card": {"uid": "cmm-410", "collectorNumber": "410", "edition": {"editioncode": "cmm"},
+                  "oracleCard": {"name": "Sol Ring"}}},
+        {"quantity": 4, "categories": ["Removal", "Ramp"], "modifier": "Normal", "deletedAt": None,
+         "card": {"uid": "2xm-117", "collectorNumber": "117", "edition": {"editioncode": "2xm"},
+                  "oracleCard": {"name": "Lightning Bolt"}}},
+        {"quantity": 1, "categories": ["Removal"], "modifier": "Normal", "deletedAt": None,
+         "card": {"uid": "", "collectorNumber": "267", "edition": {"editioncode": "mh2"},
+                  "oracleCard": {"name": "Counterspell"}}},
+        {"quantity": 1, "categories": [], "modifier": "Normal", "deletedAt": None,
+         "card": {"uid": "", "oracleCard": {"name": "Delver of Secrets"}}},
+        {"quantity": 1, "categories": ["Maybeboard"], "modifier": "Normal", "deletedAt": None,
+         "card": {"uid": "m10-146", "oracleCard": {"name": "Lightning Bolt"}}},
+        {"quantity": 1, "categories": ["Ramp"], "modifier": "Normal", "deletedAt": "2026-10-01T00:00:00Z",
+         "card": {"uid": "m10-146", "oracleCard": {"name": "Lightning Bolt"}}},
+    ],
+}
+
+
+def fake_archidekt_get(url, params=None):
+    if "/v3/" in url:
+        assert params["ownerUsername"] == "skyetown"
+        return ARCHIDEKT_LIST
+    if url.endswith("/111/"):
+        return ARCHIDEKT_DECK
+    from . import archidekt
+    raise archidekt.ArchidektError("That deck is private on Archidekt. Make it public or unlisted there, then try again.")
+
+
+class ArchidektParseTests(TestCase):
+    def test_usernames_and_links(self):
+        from . import archidekt
+        self.assertEqual(archidekt.clean_username("https://archidekt.com/u/skyetown"), "skyetown")
+        self.assertEqual(archidekt.clean_username("  @skyetown "), "skyetown")
+        with self.assertRaises(archidekt.ArchidektError):
+            archidekt.clean_username("not a name!")
+        self.assertEqual(archidekt.deck_id("https://archidekt.com/decks/123456/my_deck"), 123456)
+        self.assertEqual(archidekt.deck_id("123456"), 123456)
+        self.assertIsNone(archidekt.deck_id("https://moxfield.com/decks/abc"))
+
+    def test_user_decks_keeps_only_that_user(self):
+        from . import archidekt
+        with mock.patch.object(archidekt, "_get_json", side_effect=fake_archidekt_get):
+            decks = archidekt.user_decks("skyetown")
+        self.assertEqual([(d["id"], d["format_name"]) for d in decks], [(111, "Commander"), (222, "Modern")])
+
+    def test_fetch_deck_boards(self):
+        from . import archidekt
+        with mock.patch.object(archidekt, "_get_json", side_effect=fake_archidekt_get):
+            deck = archidekt.fetch_deck(111)
+        self.assertEqual(deck["format"], "commander")
+        rows = [(r["name"], r["board"], r["quantity"], r["finish"]) for r in deck["rows"]]
+        self.assertEqual(rows, [("Sol Ring", "commander", 1, "foil"), ("Lightning Bolt", "main", 4, "nonfoil"),
+                                ("Counterspell", "main", 1, "nonfoil"), ("Delver of Secrets", "main", 1, "nonfoil")])
+
+
+@mock.patch.object(scryfall, "lookup", fake_lookup)
+@mock.patch.object(scryfall, "get_many", fake_get_many)
+class ArchidektViewTests(TestCase):
+    def setUp(self):
+        from . import archidekt
+        patcher = mock.patch.object(archidekt, "_get_json", side_effect=fake_archidekt_get)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_link_list_import_and_update(self):
+        url = reverse("collection:archidekt")
+        self.assertContains(self.client.get(url), "Link account")
+        self.client.post(url, {"action": "link", "username": "https://archidekt.com/u/skyetown"})
+        page = self.client.get(url)
+        self.assertContains(page, "Sol Ring Tribal")
+        self.assertNotContains(page, "Someone else")
+
+        done = self.client.post(reverse("collection:archidekt_import"), {"deck": "111"})
+        deck = Deck.objects.get(source="archidekt")
+        self.assertRedirects(done, reverse("collection:deck", args=[deck.pk]))
+        self.assertEqual((deck.name, deck.format, deck.source_id), ("Sol Ring Tribal", "commander", "111"))
+        entries = {(e.card.name, e.board): e.quantity for e in deck.entries.select_related("card")}
+        self.assertEqual(entries, {("Sol Ring", "commander"): 1, ("Lightning Bolt", "main"): 4,
+                                   ("Counterspell", "main"): 1,
+                                   ("Delver of Secrets // Insectile Aberration", "main"): 1})
+        self.assertEqual(CollectionItem.objects.count(), 0)
+        self.assertContains(self.client.get(url), "imported")
+
+        # Importing again points at the existing deck instead of making a copy.
+        self.client.post(reverse("collection:archidekt_import"), {"deck": "https://archidekt.com/decks/111/x"})
+        self.assertEqual(Deck.objects.count(), 1)
+
+        # Local edits are replaced by Archidekt's list on update (only when confirmed).
+        DeckCard.objects.filter(deck=deck, card__name="Lightning Bolt").update(quantity=1)
+        sync = reverse("collection:archidekt_sync", args=[deck.pk])
+        self.client.post(sync)
+        self.assertEqual(DeckCard.objects.get(deck=deck, card__name="Lightning Bolt").quantity, 1)
+        self.client.post(sync, {"confirm": "yes"})
+        self.assertEqual(DeckCard.objects.get(deck=deck, card__name="Lightning Bolt").quantity, 4)
+        self.assertContains(self.client.get(reverse("collection:deck", args=[deck.pk])), "Update from Archidekt")
+
+        self.client.post(url, {"action": "unlink"})
+        self.assertFalse(LinkedProfile.objects.exists())
+        self.assertTrue(Deck.objects.filter(pk=deck.pk).exists())
+
+    def test_import_owned(self):
+        self.client.post(reverse("collection:archidekt_import"), {"deck": "111", "own": "1"})
+        self.assertEqual(CollectionItem.objects.get(card__scryfall_id="cmm-410").finish, "foil")
+
+    def test_private_deck(self):
+        page = self.client.post(reverse("collection:archidekt_import"), {"deck": "999"}, follow=True)
+        self.assertContains(page, "private on Archidekt")
+        self.assertEqual(Deck.objects.count(), 0)  # nothing half-made

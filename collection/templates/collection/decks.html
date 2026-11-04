@@ -15,6 +15,7 @@
     </select>
     <button type="submit" class="btn primary">Create deck</button>
     <span class="spacer"></span>
+    <a class="btn" href="{% url 'collection:archidekt' %}">Import from Archidekt</a>
     <a class="btn" href="{% url 'collection:precons' %}">Start from a precon</a>
     <details class="paste-list">
       <summary>Paste a deck list (optional)</summary>
@@ -23,7 +24,7 @@
       <span class="small muted">From Moxfield, Archidekt, MTG Arena or EDHREC. You'll see the check before anything is added.</span>
     </details>
   </form>
-  <p class="note">Build from cards in your library, paste a list from another site, or start from an official precon. Cards you don't own yet go on the deck's shopping list.</p>
+  <p class="note">Build from cards in your library, paste a list from another site, import your Archidekt decks, or start from an official precon. Cards you don't own yet go on the deck's shopping list.</p>
   {% if not library_size %}
     <div class="message">Your library is empty. <a href="{% url 'collection:add' %}">Add some cards</a> first, then build a deck from them.</div>
   {% endif %}
