@@ -10,6 +10,27 @@
   let onThePlay = true;
   const selected = new Set();   // cards picked to go on the bottom after a mulligan
 
+  // Interaction simulator (interaction-engine.js). Settings are kept per browser,
+  // separately for Commander and other formats (they want different opponent counts).
+  const SIM = window.InteractionSim;
+  const SIM_KEY = "manaledger.interaction.v1." + (DATA.format === "commander" ? "commander" : "other");
+  let sim = loadSim();
+  let simRound = null;     // {turn, events} rolled for the end of this turn (kept if you go back)
+  let simPending = [];     // e.g. a counterspell held up during your current turn
+  let simHistory = [];     // every interaction this game, newest first
+
+  function loadSim() {
+    try {
+      return SIM.normalize(JSON.parse(window.localStorage.getItem(SIM_KEY) || "null") || {}, DATA.format);
+    } catch (e) {
+      return SIM.normalize({}, DATA.format);
+    }
+  }
+
+  function saveSim() {
+    try { window.localStorage.setItem(SIM_KEY, JSON.stringify(sim)); } catch (e) { /* storage blocked: settings last this visit */ }
+  }
+
   // ------------------------------------------------------------ small helpers
 
   function el(tag, attrs, ...children) {
@@ -107,6 +128,7 @@
     $("pt-command-panel").hidden = !DATA.commanders.length && !state.command.length;
 
     renderBanner();
+    renderSim();
     const playing = state.phase === "playing";
     document.querySelectorAll(".pt-actions [data-act]").forEach((b) => {
       if (b.dataset.act !== "restart") b.disabled = !playing;
@@ -130,6 +152,12 @@
             el("input", { type: "checkbox", id: "pt-play-draw", checked: onThePlay ? true : null,
               onchange: (e) => { onThePlay = e.target.checked; state.onThePlay = onThePlay; } }),
             " On the play (no draw on turn 1)") : null,
+          state.mulligans === 0 ? el("label", { class: "check", for: "pt-sim-on" },
+            el("input", { type: "checkbox", id: "pt-sim-on", checked: sim.enabled ? true : null,
+              onchange: (e) => { sim.enabled = e.target.checked; saveSim(); render(); } }),
+            " Interaction simulator") : null,
+          state.mulligans === 0 ? el("button", { type: "button", class: "btn small ghost", text: "Interaction settings…",
+            onclick: () => openDialog(simSettingsView) }) : null,
           el("button", { type: "button", class: "btn primary", text: "Keep", onclick: () => { E.keep(state); render(); } }),
           el("button", { type: "button", class: "btn",
             text: state.freeMulligan && state.mulligans === 0 ? "Mulligan (free)" : `Mulligan to ${next}`,
@@ -357,14 +385,221 @@
 
   // ------------------------------------------------------------ buttons and keys
 
+  // ------------------------------------------------------------ interaction simulator
+
+  function advance() {
+    if (!SIM.shouldRoll(sim, state.turn)) {
+      simPending = [];
+      E.nextTurn(state);
+      return;
+    }
+    if (!simRound || simRound.turn !== state.turn) simRound = { turn: state.turn, events: SIM.roll(sim, state) };
+    openDialog(simRoundView);
+  }
+
+  function finishRound() {
+    const events = simRound ? simRound.events : [];
+    if (!events.length) E.note(state, "Opponents' turns: no interaction.");
+    for (const e of events.slice().reverse()) E.note(state, `Opponents: ${e.title}. ${e.text}`);
+    simHistory = events.concat(simHistory).slice(0, 200);
+    simPending = events.filter((e) => e.pending);
+    simRound = null;
+    dialog.close();
+    E.nextTurn(state);
+    render();
+  }
+
+  function lifeControl(e) {
+    if (!e.life) return null;
+    if (e.applied) return el("span", { class: "small muted", text: `Lost ${e.applied} life.` });
+    const input = el("input", { type: "number", class: "qty", min: "0", max: "999", value: String(e.life),
+      "aria-label": `Life to lose from ${e.card || "the attack"}` });
+    return el("span", { class: "pt-sim-life" }, input,
+      el("button", { type: "button", class: "btn small", text: "Lose that much life",
+        onclick: () => {
+          const n = Math.max(0, Math.round(Number(input.value) || 0));
+          state.life -= n;
+          e.applied = n;
+          render();
+          refreshDialog();
+        } }));
+  }
+
+  function eventNode(e, withControls) {
+    return el("li", { class: `pt-sim-event cat-${e.category}` },
+      el("div", { class: "pt-sim-event-head" },
+        el("span", { class: "pt-sim-cat", text: SIM.categoryLabel(e.category) }),
+        withControls ? el("label", { class: "check small" },
+          el("input", { type: "checkbox", checked: e.done ? true : null, onchange: (ev) => { e.done = ev.target.checked; } }),
+          " Resolved") : el("span", { class: "small muted", text: `after turn ${e.turn}` })),
+      el("strong", { text: e.title }),
+      el("div", { class: "small", text: e.text }),
+      withControls ? lifeControl(e) : null);
+  }
+
+  function simRoundView() {
+    const events = simRound.events;
+    const next = state.turn + 1;
+    dialog.replaceChildren(el("div", { class: "pt-dialog-inner pt-sim-round" },
+      el("div", { class: "pt-dialog-head" },
+        el("h3", { text: `Your opponents' turns (before your turn ${next})` })),
+      events.length
+        ? el("p", { class: "note", text: "Resolve each of these yourself: pick the targets your opponents would pick, declare blocks, move cards. Nothing on the table changes on its own." })
+        : el("p", { class: "pt-sim-quiet", text: "No interaction this round. Your opponents developed their own boards." }),
+      events.length ? el("ol", { class: "pt-sim-events" }, ...events.map((e) => eventNode(e, true))) : null,
+      el("div", { class: "row-actions" },
+        el("button", { type: "button", class: "btn primary", id: "pt-sim-continue", autofocus: true, text: `Go to turn ${next}`, onclick: finishRound }),
+        el("button", { type: "button", class: "btn ghost", text: "Back to this turn",
+          onclick: () => dialog.close() }),
+        el("span", { class: "small muted", text: "N or Enter continues." }))));
+    if (dialog.open) $("pt-sim-continue").focus({ preventScroll: true });  // on first open, autofocus does it
+  }
+
+  function simHistoryView() {
+    dialogShell("Interaction log",
+      simHistory.length
+        ? el("ol", { class: "pt-sim-events" }, ...simHistory.map((e) => eventNode(e, false)))
+        : el("p", { class: "note", text: sim.enabled
+            ? `Nothing yet. Opponents start interacting after your turn ${sim.startTurn}.`
+            : "The interaction simulator is off. Turn it on from the game menu or the new game screen." }));
+  }
+
+  function simSettingsView() {
+    const set = (changes, keepPreset) => {
+      sim = SIM.normalize(Object.assign({}, sim, changes), DATA.format);
+      if (!keepPreset) sim.preset = "custom";
+      saveSim();
+      render();
+      simSettingsView();
+    };
+    const preset = SIM.PRESETS.find((p) => p.id === sim.preset);
+    const numberField = (id, label, key, min, max, help) => el("label", { class: "pt-sim-field", for: id },
+      el("span", { text: label }),
+      el("input", { type: "number", id, class: "qty", min: String(min), max: String(max), value: String(sim[key]),
+        onchange: (ev) => set({ [key]: ev.target.value }, true) }),
+      help ? el("span", { class: "small muted", text: help }) : null);
+
+    const rows = SIM.CATEGORIES.map((c) => {
+      const value = sim.chances[c.id];
+      const id = "pt-sim-" + c.id;
+      return el("div", { class: "pt-sim-chance" },
+        el("label", { for: id }, el("strong", { text: c.label }), el("span", { class: "small muted", text: " " + c.hint })),
+        el("input", { type: "range", id, min: "0", max: "60", step: "0.5", value: String(Math.min(60, value)),
+          oninput: (ev) => { ev.target.nextSibling.value = ev.target.value; },
+          onchange: (ev) => set({ chances: Object.assign({}, sim.chances, { [c.id]: ev.target.value }) }) }),
+        el("input", { type: "number", class: "qty", min: "0", max: "100", step: "0.5", value: String(value),
+          "aria-label": `${c.label} chance, percent`,
+          onchange: (ev) => set({ chances: Object.assign({}, sim.chances, { [c.id]: ev.target.value }) }) }),
+        el("span", { class: "small muted", text: "%" }));
+    });
+
+    const expected = SIM.expectedPerRound(sim);
+    dialogShell("Interaction settings",
+      el("p", { class: "note", text: "Hypothetical opponents push back between your turns: attacks, removal, counterspells and more. It isn't a real game, but it shows where your deck is fragile in a way goldfishing can't. Settings are saved in this browser." }),
+      el("div", { class: "pt-sim-toggles" },
+        el("label", { class: "check" }, el("input", { type: "checkbox", checked: sim.enabled ? true : null,
+          onchange: (ev) => set({ enabled: ev.target.checked }, true) }), " Interaction simulator on"),
+        el("label", { class: "check" }, el("input", { type: "checkbox", checked: sim.showWidget ? true : null,
+          onchange: (ev) => set({ showWidget: ev.target.checked }, true) }), " Show the interaction widget"),
+        el("label", { class: "check" }, el("input", { type: "checkbox", checked: sim.ramp ? true : null,
+          onchange: (ev) => set({ ramp: ev.target.checked }, true) }), " Ease in over the first turns")),
+      el("label", { class: "pt-sim-field", for: "pt-sim-preset" },
+        el("span", { text: "Opponent archetype" }),
+        el("select", { id: "pt-sim-preset", onchange: (ev) => {
+            if (ev.target.value !== "custom") { sim = SIM.applyPreset(sim, ev.target.value); saveSim(); render(); simSettingsView(); }
+          } },
+          ...SIM.PRESETS.map((p) => el("option", { value: p.id, selected: p.id === sim.preset ? true : null, text: p.label })),
+          el("option", { value: "custom", selected: sim.preset === "custom" ? true : null, text: "Custom" }))),
+      el("p", { class: "small muted", text: preset ? preset.note : "Your own mix. Pick an archetype to start over from it." }),
+      el("div", { class: "pt-sim-fields" },
+        numberField("pt-sim-opponents", "Opponents", "opponents", 1, 5),
+        numberField("pt-sim-start", "Start after your turn", "startTurn", 1, 20),
+        numberField("pt-sim-max", "Most interactions per round", "maxPerRound", 1, 6)),
+      el("h4", { class: "group-title", text: "Chance per opponent, per turn" }),
+      el("p", { class: "small muted", text: "How likely one opponent is to do each thing on one of their turns. Opponents only aim removal at things you have: no creature removal with no creatures, and wipes mostly when you have several creatures." }),
+      el("div", { class: "pt-sim-chances" }, ...rows),
+      el("p", { class: "note", text: `With these settings: about ${expected.toFixed(1)} interaction${expected >= 0.95 && expected < 1.05 ? "" : "s"} per round at full strength, before relevance and the cap of ${sim.maxPerRound}.` }),
+      el("div", { class: "row-actions" },
+        el("button", { type: "button", class: "btn", text: "Reset to Balanced",
+          onclick: () => { sim = SIM.applyPreset(SIM.normalize(Object.assign({}, SIM.defaultSettings(DATA.format), { enabled: sim.enabled, showWidget: sim.showWidget }), DATA.format), "balanced"); saveSim(); render(); simSettingsView(); } }),
+        el("button", { type: "button", class: "btn primary", text: "Done", onclick: () => dialog.close() })));
+  }
+
+  function renderSim() {
+    const box = $("pt-sim");
+    box.hidden = !(sim.enabled && sim.showWidget);
+    if (box.hidden) return;
+    const preset = SIM.PRESETS.find((p) => p.id === sim.preset);
+    const started = state.phase === "playing" && state.turn >= sim.startTurn;
+    box.replaceChildren(...[
+      el("div", { class: "pt-sim-head" },
+        el("h3", { text: "Interaction" }),
+        el("button", { type: "button", class: "btn small ghost", text: "Settings", onclick: () => openDialog(simSettingsView) })),
+      el("p", { class: "small muted", text: `${preset ? preset.label : "Custom"} · ${sim.opponents} opponent${sim.opponents === 1 ? "" : "s"} · ` +
+        (started ? "active" : `starts after your turn ${sim.startTurn}`) }),
+      simPending.length ? el("div", { class: "pt-sim-pending" },
+        el("div", { class: "kpi-label", text: "This turn" }),
+        ...simPending.map((e) => el("div", { class: "pt-sim-hold" },
+          el("strong", { text: e.card }), " ", el("span", { class: "small", text: e.text }),
+          el("button", { type: "button", class: "btn small ghost", text: "Used", onclick: () => {
+            simPending = simPending.filter((p) => p !== e); render(); } })))) : null,
+      simHistory.length ? el("ol", { class: "pt-sim-recent" }, ...simHistory.slice(0, 6).map((e) =>
+        el("li", {}, el("span", { class: "muted", text: `T${e.turn} ` }), e.card || "Attack", e.life ? ` (${e.life})` : ""))) : null,
+      simHistory.length ? el("button", { type: "button", class: "btn small ghost", text: "Full interaction log", onclick: () => openDialog(simHistoryView) }) : null,
+    ].filter(Boolean));
+  }
+
+  // Game menu
+  const gameMenu = $("pt-game-menu");
+  const gameMenuButton = $("pt-game-menu-button");
+
+  function closeGameMenu() {
+    gameMenu.hidden = true;
+    gameMenuButton.setAttribute("aria-expanded", "false");
+  }
+
+  gameMenuButton.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    const open = gameMenu.hidden;
+    gameMenu.hidden = !open;
+    gameMenuButton.setAttribute("aria-expanded", String(open));
+    gameMenu.querySelector('[data-sim="toggle"]').setAttribute("aria-checked", String(sim.enabled));
+    gameMenu.querySelector('[data-sim="toggle"]').textContent = `Interaction simulator: ${sim.enabled ? "on" : "off"}`;
+    gameMenu.querySelector('[data-sim="widget"]').setAttribute("aria-checked", String(sim.showWidget));
+    gameMenu.querySelector('[data-sim="widget"]').textContent = `${sim.showWidget ? "Hide" : "Show"} interaction widget`;
+  });
+  document.addEventListener("click", (ev) => { if (!ev.target.closest(".pt-game-menu")) closeGameMenu(); });
+  gameMenu.querySelectorAll("[data-sim]").forEach((item) => item.addEventListener("click", () => {
+    closeGameMenu();
+    const what = item.dataset.sim;
+    if (what === "toggle") { sim.enabled = !sim.enabled; saveSim(); }
+    else if (what === "widget") { sim.showWidget = !sim.showWidget; saveSim(); }
+    else if (what === "settings") openDialog(simSettingsView);
+    else if (what === "history") openDialog(simHistoryView);
+    else if (what === "restart") { closeMenu(); start(); }
+    render();
+  }));
+
+  // The round dialog can't be dismissed with Escape by accident; N or Enter continues.
+  dialog.addEventListener("cancel", (ev) => { if (dialogView === simRoundView) ev.preventDefault(); });
+  document.addEventListener("keydown", (ev) => {
+    if (!dialog.open || dialogView !== simRoundView) return;
+    if (ev.target.closest("input, select, button:not(#pt-sim-continue)")) return;
+    if (ev.key === "n" || ev.key === "N" || ev.key === "Enter") {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();  // don't let the table's own N shortcut start another round
+      finishRound();
+    }
+  });
+
   const actions = {
     draw: () => E.draw(state, 1),
-    next: () => E.nextTurn(state),
+    next: () => advance(),
     untap: () => E.untapAll(state),
     mill: () => E.mill(state, 1),
     shuffle: () => E.shuffleLibrary(state),
     look: () => { if (state.library.length) openDialog(lookView()); },
-    restart: () => { closeMenu(); start(); },
+    restart: () => { closeMenu(); closeGameMenu(); start(); },
   };
 
   document.querySelectorAll("[data-act]").forEach((button) => {
@@ -390,7 +625,7 @@
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") { closeMenu(); return; }
-    if (event.target.closest("input, select, textarea, dialog") || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.target.closest("input, select, textarea, dialog[open]") || event.ctrlKey || event.metaKey || event.altKey) return;
     if (state.phase !== "playing") return;
     const key = event.key.toLowerCase();
     const map = { d: "draw", n: "next", u: "untap", l: "look" };
@@ -464,6 +699,9 @@
   function start() {
     state = E.newGame(DATA, { onThePlay });
     selected.clear();
+    simRound = null;
+    simPending = [];
+    simHistory = [];
     render();
   }
 

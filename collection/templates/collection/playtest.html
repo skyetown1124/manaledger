@@ -36,10 +36,20 @@
       <button type="button" class="btn" data-act="mill">Mill 1</button>
       <button type="button" class="btn" data-act="shuffle">Shuffle</button>
       <button type="button" class="btn ghost" data-act="restart">New game</button>
+      <div class="pt-game-menu">
+        <button type="button" class="btn" id="pt-game-menu-button" aria-haspopup="true" aria-expanded="false" aria-controls="pt-game-menu">Game menu ▾</button>
+        <div class="pt-game-menu-list" id="pt-game-menu" role="menu" hidden>
+          <button type="button" role="menuitemcheckbox" data-sim="toggle">Interaction simulator</button>
+          <button type="button" role="menuitem" data-sim="settings">Interaction settings…</button>
+          <button type="button" role="menuitemcheckbox" data-sim="widget">Show interaction widget</button>
+          <button type="button" role="menuitem" data-sim="history">Interaction log…</button>
+          <button type="button" role="menuitem" data-sim="restart">New game</button>
+        </div>
+      </div>
     </div>
   </div>
   <div id="pt-banner" class="pt-banner"></div>
-  <p class="small muted pt-help">Click a card for its options. Double-click to play a card from your hand or to tap and untap one on the battlefield. Keys: <kbd>D</kbd> draw, <kbd>N</kbd> next turn, <kbd>U</kbd> untap all, <kbd>L</kbd> look at the top cards.</p>
+  <p class="small muted pt-help">Click a card for its options. Double-click to play a card from your hand or to tap and untap one on the battlefield. Keys: <kbd>D</kbd> draw, <kbd>N</kbd> next turn, <kbd>U</kbd> untap all, <kbd>L</kbd> look at the top cards. With the interaction simulator on, <kbd>N</kbd> first shows what your opponents did.</p>
 </section>
 
 <section class="pt-table">
@@ -74,6 +84,7 @@
         <button type="submit" class="btn small">Create</button>
       </div>
     </form>
+    <div class="panel pt-sim" id="pt-sim" hidden aria-live="polite"></div>
     <div class="panel">
       <h3>Game log</h3>
       <ol id="pt-log" class="pt-log"></ol>
@@ -120,6 +131,7 @@
 {% block scripts %}
   {% if card_count %}
     <script src="{% static 'collection/playtest-engine.js' %}"></script>
+    <script src="{% static 'collection/interaction-engine.js' %}"></script>
     <script src="{% static 'collection/playtest.js' %}"></script>
   {% endif %}
 {% endblock %}

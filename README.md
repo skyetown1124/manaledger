@@ -135,6 +135,23 @@ Open http://127.0.0.1:8000/ and use **Add Cards** to search for your first card.
     to the graveyard), and double-click a permanent to tap or untap it. Click
     any card for more options: discard, exile, return to hand, top or bottom of
     library, and so on.
+  - **Interaction simulator**: hypothetical opponents push back between your
+    turns. Turn it on from the new game screen or **Game menu**. After the turn
+    you set it to start on, **Next turn** (or N) first shows what your
+    opponents did: attacks (with the attacking creatures listed), creature and
+    permanent removal, board wipes, counterspells held up for your next turn,
+    discard, graveyard hate, drain and theft, each as a real card like Beast
+    Within or Swords to Plowshares. Nothing happens on its own: you choose the
+    targets an opponent would choose, declare blocks, and press the life
+    button to take damage. **Interaction settings** controls the number of
+    opponents, the start turn, the most interactions per round, and the
+    chance of each kind per opponent turn, with archetype presets (balanced,
+    casual, aggro, control, blue, graveyard hate, cEDH). Opponents only aim at
+    what you have: no creature removal against an empty board, wipes mostly
+    when you have several creatures. A widget beside the table shows held
+    counterspells and recent interaction. Settings are saved in your browser.
+    It isn't a real game, but it shows where your deck is fragile in a way
+    goldfishing can't.
   - Library tools: draw, mill, shuffle, **Look at top…** (scry-style: keep on
     top in any order, bottom, graveyard or hand), and **Search** (tutor; the
     library shuffles afterwards). Graveyard and exile can be browsed and cards
@@ -340,8 +357,9 @@ python manage.py refresh_prices
 | `collection/stats.py` | All dashboard math, in plain Python (no database calls), so it's easy to test |
 | `collection/views.py` | Dashboard, My Cards, Add Cards, Decks, refresh, and the autocomplete endpoint |
 | `collection/static/collection/playtest-engine.js` | Playtest rules (shuffle, mulligans, zones, turns, odds) as plain functions |
-| `collection/static/collection/playtest.js` | The playtest table: drawing cards, menus, dialogs, keyboard shortcuts |
-| `collection/js_tests/` | Node tests for the playtest engine |
+| `collection/static/collection/interaction-engine.js` | Interaction simulator: categories, presets, board-aware rolls (plain functions) |
+| `collection/static/collection/playtest.js` | The playtest table: drawing cards, menus, dialogs, keyboard shortcuts, interaction simulator screens |
+| `collection/js_tests/` | Node tests for the playtest engine and the interaction simulator |
 | `collection/tests.py` | Tests for search, deck rules, Scryfall parsing and the deck pages |
 | `collection/templates/collection/` | `base.html` (header, tabs, footer) and one template per page |
 | `collection/templatetags/` | `money` (dollar formatting) and `cards` (mana symbols, color pips, highlighting) |

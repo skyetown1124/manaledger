@@ -279,7 +279,7 @@
   const Engine = {
     ZONES, shuffle, isLand, isPermanentSpell, newGame, draw, mulligan, keep, bottom, nextTurn,
     find, move, play, toggleTap, untapAll, mill, shuffleLibrary, resolveTop, untappedLands,
-    commanderTax, createToken, hypergeom, atLeast, cardsSeen,
+    commanderTax, createToken, hypergeom, atLeast, cardsSeen, note,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = Engine;
   else root.PlaytestEngine = Engine;

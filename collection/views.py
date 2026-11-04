@@ -633,7 +633,7 @@ def deck_playtest(request, pk):
     return render(request, "collection/playtest.html", {
         "active_tab": "decks", "deck": deck, "card_count": len(cards),
         "playtest": {
-            "deckName": deck.name, "cards": cards, "commanders": commanders,
+            "deckName": deck.name, "format": deck.format, "cards": cards, "commanders": commanders,
             "life": 40 if commander_format else 20, "freeMulligan": commander_format,
         },
     })
