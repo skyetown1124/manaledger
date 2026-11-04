@@ -540,7 +540,7 @@
     const waiting = !playing || state.turn < sim.startTurn;
     const rest = sim.startTurn - (playing ? state.turn : 0);
     bar.className = "pt-sim-status on";
-    bar.replaceChildren(
+    bar.replaceChildren(...[
       el("span", { class: "pt-sim-dot", "aria-hidden": "true" }),
       el("span", {},
         el("strong", { text: `Interaction simulator on · ${sim.opponents} opponent${sim.opponents === 1 ? "" : "s"}. ` }),
@@ -552,7 +552,8 @@
         title: "Roll your opponents' turns right away, whatever the turn number",
         onclick: () => { simRound = { turn: state.turn, events: SIM.roll(Object.assign({}, sim, { startTurn: 1, ramp: false }), state) }; openDialog(simRoundView); } }) : null,
       el("button", { type: "button", class: "btn small ghost", text: "Settings…", onclick: () => openDialog(simSettingsView) }),
-      el("button", { type: "button", class: "btn small ghost", text: "Turn off", onclick: () => { sim.enabled = false; saveSim(); render(); } }));
+      el("button", { type: "button", class: "btn small ghost", text: "Turn off", onclick: () => { sim.enabled = false; saveSim(); render(); } }),
+    ].filter(Boolean));
   }
 
   function renderSim() {
