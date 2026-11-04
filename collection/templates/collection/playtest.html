@@ -49,6 +49,7 @@
     </div>
   </div>
   <div id="pt-banner" class="pt-banner"></div>
+  <div id="pt-sim-status" class="pt-sim-status" aria-live="polite"></div>
   <p class="small muted pt-help">Click a card for its options. Double-click to play a card from your hand or to tap and untap one on the battlefield. Keys: <kbd>D</kbd> draw, <kbd>N</kbd> next turn, <kbd>U</kbd> untap all, <kbd>L</kbd> look at the top cards. With the interaction simulator on, <kbd>N</kbd> first shows what your opponents did.</p>
 </section>
 
@@ -67,6 +68,7 @@
   </div>
 
   <aside class="pt-side">
+    <div class="panel pt-sim" id="pt-sim" hidden aria-live="polite"></div>
     <div class="panel pt-zone" id="pt-command-panel">
       <h3>Command zone</h3>
       <div id="pt-command" class="pt-row" data-empty="No commander in this deck."></div>
@@ -84,7 +86,6 @@
         <button type="submit" class="btn small">Create</button>
       </div>
     </form>
-    <div class="panel pt-sim" id="pt-sim" hidden aria-live="polite"></div>
     <div class="panel">
       <h3>Game log</h3>
       <ol id="pt-log" class="pt-log"></ol>

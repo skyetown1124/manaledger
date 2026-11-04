@@ -525,7 +525,38 @@
         el("button", { type: "button", class: "btn primary", text: "Done", onclick: () => dialog.close() })));
   }
 
+  function renderSimStatus() {
+    const bar = $("pt-sim-status");
+    const playing = state.phase === "playing";
+    if (!sim.enabled) {
+      bar.replaceChildren(
+        el("span", { class: "pt-sim-dot off", "aria-hidden": "true" }),
+        el("span", {}, el("strong", { text: "Interaction simulator off." }), " Goldfishing: no opponents."),
+        el("button", { type: "button", class: "btn small", text: "Turn on", onclick: () => { sim.enabled = true; saveSim(); render(); } }),
+        el("button", { type: "button", class: "btn small ghost", text: "Settings…", onclick: () => openDialog(simSettingsView) }));
+      bar.className = "pt-sim-status off";
+      return;
+    }
+    const waiting = !playing || state.turn < sim.startTurn;
+    const rest = sim.startTurn - (playing ? state.turn : 0);
+    bar.className = "pt-sim-status on";
+    bar.replaceChildren(
+      el("span", { class: "pt-sim-dot", "aria-hidden": "true" }),
+      el("span", {},
+        el("strong", { text: `Interaction simulator on · ${sim.opponents} opponent${sim.opponents === 1 ? "" : "s"}. ` }),
+        waiting
+          ? `Opponents start acting after your turn ${sim.startTurn}` + (playing ? ` (${rest} more turn${rest === 1 ? "" : "s"}). ` : ". ") +
+            "From then on, Next turn (N) first shows what they did."
+          : "Next turn (N) plays your opponents' turns first and shows what they did."),
+      playing ? el("button", { type: "button", class: "btn small", text: "Opponents act now",
+        title: "Roll your opponents' turns right away, whatever the turn number",
+        onclick: () => { simRound = { turn: state.turn, events: SIM.roll(Object.assign({}, sim, { startTurn: 1, ramp: false }), state) }; openDialog(simRoundView); } }) : null,
+      el("button", { type: "button", class: "btn small ghost", text: "Settings…", onclick: () => openDialog(simSettingsView) }),
+      el("button", { type: "button", class: "btn small ghost", text: "Turn off", onclick: () => { sim.enabled = false; saveSim(); render(); } }));
+  }
+
   function renderSim() {
+    renderSimStatus();
     const box = $("pt-sim");
     box.hidden = !(sim.enabled && sim.showWidget);
     if (box.hidden) return;
