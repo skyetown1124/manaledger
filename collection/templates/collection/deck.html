@@ -1,5 +1,5 @@
 {% extends "collection/base.html" %}
-{% load static money cards %}
+{% load static money cards assets %}
 {% block title %}{{ deck.name }} · Mana Ledger{% endblock %}
 {% block heading %}{{ deck.name }} <span class="titlebar-sub">{{ deck.get_format_display }}</span>{% endblock %}
 
@@ -469,5 +469,5 @@
 
 {% block scripts %}
   <script src="{% static 'collection/vendor/chart.umd.min.js' %}"></script>
-  <script src="{% static 'collection/deck.js' %}"></script>
+  <script src="{% asset 'collection/deck.js' %}"></script>
 {% endblock %}

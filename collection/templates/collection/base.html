@@ -1,4 +1,4 @@
-{% load static %}<!doctype html>
+{% load static assets %}<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -8,7 +8,7 @@
     // Apply the saved theme before the page paints, so it never flashes.
     try { if (localStorage.getItem("ml-theme") === "light") document.documentElement.dataset.theme = "light"; } catch (e) {}
   </script>
-  <link rel="stylesheet" href="{% static 'collection/style.css' %}">
+  <link rel="stylesheet" href="{% asset 'collection/style.css' %}">
 </head>
 <body>
   <header class="topbar">
@@ -87,7 +87,7 @@
     <span class="foot-path">{{ request.path }}</span>
   </footer>
 
-  <script src="{% static 'collection/app.js' %}"></script>
+  <script src="{% asset 'collection/app.js' %}"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

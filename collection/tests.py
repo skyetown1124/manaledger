@@ -1695,3 +1695,10 @@ class SuggestViewTests(TestCase):
         page = self.client.get(reverse("collection:deck_suggestions", args=[deck.pk]))
         self.assertContains(page, "Shock")
         self.assertNotContains(page, "Game Changers")
+
+
+class AssetVersionTests(TestCase):
+    def test_scripts_carry_a_version(self):
+        page = self.client.get(reverse("collection:dashboard"))
+        self.assertRegex(page.content.decode(), r'/static/collection/style\.css\?v=\d+')
+        self.assertRegex(page.content.decode(), r'/static/collection/app\.js\?v=\d+')

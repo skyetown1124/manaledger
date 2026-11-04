@@ -1,5 +1,5 @@
 {% extends "collection/base.html" %}
-{% load static %}
+{% load static assets %}
 {% block title %}Playtest {{ deck.name }} · Mana Ledger{% endblock %}
 {% block heading %}{{ deck.name }} <span class="titlebar-sub">Playtest · {{ deck.get_format_display }}</span>{% endblock %}
 
@@ -131,8 +131,8 @@
 
 {% block scripts %}
   {% if card_count %}
-    <script src="{% static 'collection/playtest-engine.js' %}"></script>
-    <script src="{% static 'collection/interaction-engine.js' %}"></script>
-    <script src="{% static 'collection/playtest.js' %}"></script>
+    <script src="{% asset 'collection/playtest-engine.js' %}"></script>
+    <script src="{% asset 'collection/interaction-engine.js' %}"></script>
+    <script src="{% asset 'collection/playtest.js' %}"></script>
   {% endif %}
 {% endblock %}
