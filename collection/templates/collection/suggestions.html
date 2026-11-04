@@ -1,0 +1,154 @@
+{% extends "collection/base.html" %}
+{% load money cards %}
+{% block title %}Suggestions for {{ deck.name }} · Mana Ledger{% endblock %}
+{% block heading %}Suggestions <span class="titlebar-sub">{{ deck.name }} · from your collection</span>{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <div class="section-head">
+    <span>{% if s.target %}Keeping {{ deck.name }} at <strong>Bracket {{ s.target }} · {{ s.target_name }}</strong>{% else %}Cards from your collection for {{ deck.name }}{% endif %}</span>
+    <span class="spacer"></span>
+    {% if s.bracket %}
+      <form method="post" action="{% url 'collection:deck_bracket' deck.pk %}" class="precon-build">
+        {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <label for="target-bracket" class="small">Power level to keep</label>
+        <select id="target-bracket" name="target_bracket" class="compact">
+          <option value="">Where it plays now (Bracket {{ s.bracket.computed }})</option>
+          {% for value, label in bracket_choices %}<option value="{{ value }}" {% if value == deck.target_bracket %}selected{% endif %}>Bracket {{ label }}</option>{% endfor %}
+        </select>
+        <button type="submit" class="btn small">Set</button>
+      </form>
+    {% endif %}
+    <a class="btn small ghost" href="{% url 'collection:deck' deck.pk %}">Back to deck</a>
+  </div>
+  <p class="note">
+    Cards you own that aren't in this deck{% if s.has_commander %}, fit your commander's colors{% if s.identity %} ({{ s.identity|pips }}){% endif %}{% endif %}{% if deck.format != "casual" %} and are legal in {{ deck.get_format_display }}{% endif %}.
+    {% if s.target %}Each one was added to the deck and the bracket estimate run again: anything that would push it above Bracket {{ s.target }} is left out.{% endif %}
+    Suggestions favour what the deck is short on and what it's already doing.
+  </p>
+  {% if not deck.entries.exists %}<div class="message">This deck is empty. {% if deck.format == "commander" %}Add a commander first so suggestions can match its colors.{% endif %}</div>{% endif %}
+</section>
+
+{% if s.budget %}
+<section class="kpis">
+  <div class="kpi {% if s.swaps %}kpi-warn{% else %}kpi-good{% endif %}">
+    <div class="kpi-label">Plays like</div>
+    <div class="kpi-value">Bracket {{ s.bracket.computed }}</div>
+    <div class="kpi-sub">{% if s.swaps %}Above your target: see the swaps below{% else %}Within Bracket {{ s.target }}{% endif %}</div>
+  </div>
+  <div class="kpi kpi-gold">
+    <div class="kpi-label">Game Changers</div>
+    <div class="kpi-value">{{ s.budget.game_changers }}{% if s.budget.game_changers_allowed is not None %}<span class="kpi-of"> / {{ s.budget.game_changers_allowed }}</span>{% endif %}</div>
+    <div class="kpi-sub">{% if s.budget.game_changers_allowed is None %}No limit at Bracket {{ s.target }}{% elif s.budget.game_changers_left %}Room for {{ s.budget.game_changers_left }} more{% else %}No room for more{% endif %}{% if s.swaps %} after the cuts{% endif %}</div>
+  </div>
+  <div class="kpi kpi-blue">
+    <div class="kpi-label">Impact score</div>
+    <div class="kpi-value">{{ s.budget.impact_score }}{% if s.budget.impact_limit is not None %}<span class="kpi-of"> / {{ s.budget.impact_limit }}</span>{% endif %}</div>
+    <div class="kpi-sub">{% if s.budget.impact_limit is None %}No limit at Bracket {{ s.target }}{% else %}{{ s.budget.impact_left }} points of power cards left{% endif %}</div>
+  </div>
+  <div class="kpi kpi-green">
+    <div class="kpi-label">Open slots</div>
+    <div class="kpi-value">{{ s.slots }}</div>
+    <div class="kpi-sub">{{ s.deck_size }} of 100 cards · {{ s.considered }} owned cards fit</div>
+  </div>
+</section>
+{% endif %}
+
+{% if s.swaps %}
+<section class="panel needs-panel">
+  <div class="section-head"><span>Swaps to get back to Bracket {{ s.target }}</span></div>
+  <p class="note">This deck plays like Bracket {{ s.bracket.computed }}. Cutting these brings it to Bracket {{ s.target }}; each is paired with a card from your collection that does a similar job.</p>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Cut</th><th>Why</th><th>Add instead</th><th></th></tr></thead>
+      <tbody>
+        {% for w in s.swaps %}
+          <tr>
+            <td class="strong">{{ w.cut.name }}{% if w.copies|length > 1 %} <span class="small muted">(main deck and sideboard)</span>{% endif %}</td>
+            <td class="small">{{ w.reason }}</td>
+            <td>{% if w.add %}<a href="{% url 'collection:card' w.add.card_id %}">{{ w.add.name }}</a> {{ w.add.mana_cost|mana }}<div class="small muted">{{ w.add.reasons|first|default:"" }}</div>{% else %}<span class="muted small">Nothing similar in your collection</span>{% endif %}</td>
+            <td class="actions">
+              <form method="post" action="{% url 'collection:deck_cut' deck.pk %}">
+                {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><input type="hidden" name="name" value="{{ w.cut.name }}">
+                <button type="submit" class="btn small ghost">Cut</button>
+              </form>
+              {% if w.add %}
+              <form method="post" action="{% url 'collection:deck_add' deck.pk %}">
+                {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <input type="hidden" name="card_id" value="{{ w.add.card_id }}"><input type="hidden" name="board" value="main">
+                <button type="submit" class="btn small">Add</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+<section class="grid-2">
+  <div class="panel">
+    <h3>What the deck has</h3>
+    <div class="role-bars">
+      {% for g in s.gaps %}
+        <div class="role-bar">
+          <span>{{ g.label }}</span>
+          <span class="bar-track"><span class="bar {% if g.gap %}bar-short{% else %}bar-ok{% endif %}" style="width: {{ g.pct }}%"></span></span>
+          <span class="small">{{ g.have }} / ~{{ g.target }}</span>
+        </div>
+      {% endfor %}
+    </div>
+    <p class="note">{% if deck.format == "commander" %}Compared with a typical Commander deck: about 37 lands, 10 ramp, 10 card draw, 10 removal and 3 wipes.{% else %}Compared with a typical 60-card deck.{% endif %} Roles are read from each card's rules text, so they're a guide.</p>
+  </div>
+  <div class="panel">
+    <h3>What the deck is about</h3>
+    {% if s.themes or s.tribe %}
+      <div class="chips">
+        {% if s.tribe %}<span class="chip strong">{{ s.tribe }}s</span>{% endif %}
+        {% for t in s.themes %}<span class="chip">{{ t.label }}</span>{% endfor %}
+      </div>
+      <p class="note">Found in the rules text of the deck's cards (the commander counts double). Cards that share these get a boost.</p>
+    {% else %}
+      <p class="note">No clear theme yet. Add a few more cards, or a commander, and this fills in.</p>
+    {% endif %}
+  </div>
+</section>
+
+{% for g in s.groups %}
+<section class="panel">
+  <div class="section-head"><span>{{ g.label }}</span>{% if g.gap %}<span class="summary">{% if g.gap.gap %}short {{ g.gap.gap }}: has {{ g.gap.have }} of ~{{ g.gap.target }}{% else %}has {{ g.gap.have }}, enough{% endif %}</span>{% endif %}</div>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Card</th><th>Why</th><th>You own</th><th class="num">Price</th><th></th></tr></thead>
+      <tbody>
+        {% for c in g.cards %}
+          <tr>
+            <td class="card-cell">
+              <div class="card-name"><a href="{% url 'collection:card' c.card_id %}">{{ c.name }}</a> {{ c.mana_cost|mana }}</div>
+              <div class="muted small">{{ c.type_line }}</div>
+            </td>
+            <td class="small">{% for r in c.reasons %}<div>{{ r }}</div>{% empty %}<span class="muted">Fits the colors</span>{% endfor %}</td>
+            <td class="small">{{ c.owned }}{% if c.in_decks %}<div class="muted">also in {{ c.in_decks|join:", " }}</div>{% endif %}</td>
+            <td class="num">{{ c.price|money }}</td>
+            <td class="actions">
+              <form method="post" action="{% url 'collection:deck_add' deck.pk %}">
+                {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <input type="hidden" name="card_id" value="{{ c.card_id }}"><input type="hidden" name="board" value="main">
+                <button type="submit" class="btn small primary">Add</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% empty %}
+<section class="panel empty">
+  <h2>Nothing to suggest yet</h2>
+  <p>None of the cards in your collection fit this deck{% if s.target %} at Bracket {{ s.target }}{% endif %}. Add more cards to your collection, or check the deck's commander and format.</p>
+</section>
+{% endfor %}
+{% endblock %}

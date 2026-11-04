@@ -1,0 +1,42 @@
+{% extends "collection/base.html" %}
+{% load cards %}
+{% block title %}Commander ideas · Mana Ledger{% endblock %}
+{% block heading %}Commander ideas <span class="titlebar-sub">Decks you could build from your collection</span>{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <p class="note">Legendary creatures you own, ranked by how many of your other cards fit their colors. Pick the power level you want and press <strong>Start deck</strong>: the commander goes in, and you land on suggestions from your collection that keep it at that bracket.</p>
+</section>
+{% if ideas %}
+<section class="panel">
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Commander</th><th>Colors</th><th class="num">Your cards that fit</th><th>Themes</th><th>Start a deck</th></tr></thead>
+      <tbody>
+        {% for i in ideas %}
+          <tr>
+            <td class="card-cell"><div class="card-name"><a href="{% url 'collection:card' i.card.card_id %}">{{ i.card.name }}</a> {{ i.card.mana_cost|mana }}</div><div class="muted small">{{ i.card.type_line }}</div></td>
+            <td>{{ i.identity|pips }}</td>
+            <td class="num"><strong>{{ i.nonland }}</strong> <span class="muted small">+ {{ i.lands }} land{{ i.lands|pluralize }}</span>{% if i.game_changers %}<div class="small muted">{{ i.game_changers }} Game Changer{{ i.game_changers|pluralize }}</div>{% endif %}</td>
+            <td class="small">{{ i.themes|join:", "|default:"–" }}</td>
+            <td>
+              {% if i.built %}<span class="small muted">Already a commander in one of your decks</span>{% endif %}
+              <form method="post" action="{% url 'collection:deck_from_commander' %}" class="precon-build">
+                {% csrf_token %}<input type="hidden" name="card_id" value="{{ i.card.card_id }}">
+                <label class="sr" for="b-{{ forloop.counter }}">Power level for {{ i.card.name }}</label>
+                <select id="b-{{ forloop.counter }}" name="target_bracket" class="compact">
+                  {% for value, label in bracket_choices %}<option value="{{ value }}" {% if value == 2 %}selected{% endif %}>Bracket {{ label }}</option>{% endfor %}
+                </select>
+                <button type="submit" class="btn small primary">Start deck</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% else %}
+<section class="panel empty"><h2>No commanders in your collection yet</h2><p>Add a legendary creature to your collection and it shows up here with the cards you own that could go with it.</p></section>
+{% endif %}
+{% endblock %}

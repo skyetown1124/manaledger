@@ -1566,3 +1566,131 @@ class ArchidektViewTests(TestCase):
         page = self.client.post(reverse("collection:archidekt_import"), {"deck": "999"}, follow=True)
         self.assertContains(page, "private on Archidekt")
         self.assertEqual(Deck.objects.count(), 0)  # nothing half-made
+
+
+# ------------------------------------------------------------------ Suggestions from your collection
+
+def sc(name, text="", type_line="Artifact", ci="", cmc=2, gc=False, **kw):
+    """A card dict as suggest.py sees it."""
+    return dict({"name": name, "oracle_text": text, "type_line": type_line, "color_identity": ci, "cmc": cmc,
+                 "game_changer": gc, "legalities": {"commander": "legal"}, "is_basic": False, "card_id": hash(name) % 10000,
+                 "board": "main", "quantity": 1, "price": 1.0, "owned": 1, "in_decks": [], "mana_cost": ""}, **kw)
+
+
+class SuggestLogicTests(TestCase):
+    def test_roles(self):
+        from . import suggest
+        self.assertEqual(suggest.roles_of(sc("Arcane Signet", "{T}: Add one mana of any color in your commander's color identity.")), {"ramp"})
+        self.assertEqual(suggest.roles_of(sc("Divination", "Draw two cards.", "Sorcery")), {"draw"})
+        self.assertEqual(suggest.roles_of(sc("Doom Blade", "Destroy target nonblack creature.", "Instant")), {"interaction"})
+        self.assertEqual(suggest.roles_of(sc("Damnation", "Destroy all creatures. They can't be regenerated.", "Sorcery")), {"wipe"})
+        self.assertEqual(suggest.roles_of(sc("Demonic Tutor", "Search your library for a card, put that card into your hand, then shuffle.", "Sorcery")), {"tutor"})
+        self.assertEqual(suggest.roles_of(sc("Cultivate", "Search your library for up to two basic land cards, reveal those cards, put one onto the battlefield tapped and the other into your hand, then shuffle.", "Sorcery")), {"ramp"})
+        self.assertEqual(suggest.roles_of(sc("Command Tower", "{T}: Add one mana...", "Land")), {"land"})
+
+    def test_themes_and_tribe(self):
+        from . import suggest
+        deck = [sc("Meren of Clan Nel Toth", "Whenever another creature you control dies, you get an experience counter.", "Legendary Creature — Human Shaman", "BG", board="commander")]
+        deck += [sc(f"Zombie {i}", "Sacrifice another creature: draw a card.", "Creature — Zombie", "B") for i in range(6)]
+        themes, tribe = suggest.deck_themes(deck)
+        self.assertIn("sacrifice", themes)
+        self.assertEqual(tribe, "Zombie")
+
+    def test_game_changers_left_out_at_bracket_2_allowed_at_3(self):
+        from . import suggest
+        deck = [sc("Commander Guy", "", "Legendary Creature — Elf", "G", board="commander")]
+        rhystic = sc("Rhystic Study", "Whenever an opponent casts a spell, you may draw a card unless that player pays {1}.", "Enchantment", "U")
+        crop = sc("Crop Rotation", "Search your library for a land card.", "Instant", "G", gc=True)
+        fork = sc("Natural Order", "Search your library for a green creature card and put it onto the battlefield.", "Sorcery", "G", gc=True)
+        bracket2 = suggest.candidate_pool([rhystic, crop, fork], deck, "commander", 2)
+        self.assertEqual(bracket2, [])  # off-color Rhystic, and no Game Changers in Bracket 2
+        bracket3 = suggest.candidate_pool([crop, fork], deck, "commander", 3)
+        self.assertEqual({c["name"] for c in bracket3}, {"Crop Rotation", "Natural Order"})
+
+    def test_swaps_bring_an_over_bracket_deck_down(self):
+        from . import suggest
+        deck = [sc("Commander Guy", "", "Legendary Creature — Elf", "G", board="commander")]
+        deck += [sc(n, "{T}: Add {C}{C}.", gc=True) for n in ("Mana Vault", "Grim Monolith", "Ancient Tomb")]
+        deck += [sc("Plain Rock", "{T}: Add {G}.")]
+        collection = [sc("Mind Stone", "{T}: Add {C}. {1}, {T}, Sacrifice Mind Stone: Draw a card."),
+                      sc("Fellwar Stone", "{T}: Add one mana of any color that a land an opponent controls could produce."),
+                      sc("Thought Vessel", "{T}: Add {C}.")]
+        result = suggest.suggestions(deck, collection, "commander", intended=2)
+        self.assertEqual(result["bracket"]["computed"], 3)
+        self.assertEqual(len(result["swaps"]), 3)
+        self.assertTrue(all(w["add"] for w in result["swaps"]))
+        self.assertEqual(len({w["add"]["name"] for w in result["swaps"]}), 3)  # no replacement used twice
+        self.assertEqual(result["budget"]["game_changers"], 0)
+
+    def test_short_roles_rank_first(self):
+        from . import suggest
+        deck = [sc("Commander Guy", "", "Legendary Creature — Elf", "G", board="commander")]
+        deck += [sc(f"Rock {i}", "{T}: Add {G}.") for i in range(12)]   # plenty of ramp, no draw
+        collection = [sc("Harmonize", "Draw three cards.", "Sorcery", "G", cmc=4),
+                      sc("Another Rock", "{T}: Add {G}.")]
+        result = suggest.suggestions(deck, collection, "commander")
+        draw = next(g for g in result["groups"] if g["role"] == "draw")
+        ramp = next(g for g in result["groups"] if g["role"] == "ramp")
+        self.assertGreater(draw["cards"][0]["score"], ramp["cards"][0]["score"])
+
+    def test_commander_ideas(self):
+        from . import suggest
+        col = [sc("Golgari Boss", "", "Legendary Creature — Elf", "BG"),
+               sc("Mono Red Boss", "", "Legendary Creature — Goblin", "R"),
+               sc("Elf A", "", "Creature — Elf", "G"), sc("Zombie B", "", "Creature — Zombie", "B"),
+               sc("Goblin C", "", "Creature — Goblin", "R")]
+        ideas = suggest.commander_ideas(col)
+        self.assertEqual([i["card"]["name"] for i in ideas], ["Golgari Boss", "Mono Red Boss"])
+        self.assertEqual(ideas[0]["nonland"], 2)
+
+
+class SuggestViewTests(TestCase):
+    def test_pages_and_start_deck(self):
+        boss = make_card("Golgari Boss", type_line="Legendary Creature — Elf", color_identity="BG")
+        signet = make_card("Golgari Signet", type_line="Artifact", color_identity="BG",
+                           oracle_text="{1}, {T}: Add {B}{G}.", mana_cost="{2}", cmc=2)
+        bolt = make_card("Lightning Bolt", type_line="Instant", color_identity="R",
+                         oracle_text="Lightning Bolt deals 3 damage to any target.")
+        for c in (boss, signet, bolt):
+            CollectionItem.objects.create(card=c, quantity=1)
+
+        ideas = self.client.get(reverse("collection:commander_ideas"))
+        self.assertContains(ideas, "Golgari Boss")
+        done = self.client.post(reverse("collection:deck_from_commander"), {"card_id": boss.pk, "target_bracket": "2"})
+        deck = Deck.objects.get(name="Golgari Boss")
+        self.assertRedirects(done, reverse("collection:deck_suggestions", args=[deck.pk]))
+        self.assertEqual((deck.format, deck.target_bracket), ("commander", 2))
+
+        page = self.client.get(reverse("collection:deck_suggestions", args=[deck.pk]))
+        self.assertContains(page, "Keeping Golgari Boss at")
+        self.assertContains(page, "Golgari Signet")
+        self.assertNotContains(page, "Lightning Bolt")  # off-color
+
+        url = reverse("collection:deck_suggestions", args=[deck.pk])
+        added = self.client.post(reverse("collection:deck_add", args=[deck.pk]),
+                                 {"card_id": signet.pk, "board": "main", "next": url})
+        self.assertRedirects(added, url)
+        self.assertTrue(deck.entries.filter(card=signet).exists())
+
+    def test_cut_removes_every_copy_but_not_the_commander(self):
+        boss = make_card("Boss", type_line="Legendary Creature — Elf")
+        ring = make_card("Sol Ring")
+        deck = Deck.objects.create(name="D", format="commander")
+        DeckCard.objects.create(deck=deck, card=boss, board="commander")
+        DeckCard.objects.create(deck=deck, card=ring, board="main")
+        DeckCard.objects.create(deck=deck, card=ring, board="side")
+        self.client.post(reverse("collection:deck_cut", args=[deck.pk]), {"name": "Sol Ring"})
+        self.client.post(reverse("collection:deck_cut", args=[deck.pk]), {"name": "Boss"})
+        self.assertEqual(list(deck.entries.values_list("card__name", flat=True)), ["Boss"])
+
+    def test_non_commander_deck(self):
+        bolt = make_card("Lightning Bolt", type_line="Instant", color_identity="R", colors="R",
+                         oracle_text="Lightning Bolt deals 3 damage to any target.")
+        shock = make_card("Shock", type_line="Instant", color_identity="R", colors="R",
+                          oracle_text="Shock deals 2 damage to any target.")
+        CollectionItem.objects.create(card=shock, quantity=4)
+        deck = Deck.objects.create(name="Burn", format="modern")
+        DeckCard.objects.create(deck=deck, card=bolt, quantity=4)
+        page = self.client.get(reverse("collection:deck_suggestions", args=[deck.pk]))
+        self.assertContains(page, "Shock")
+        self.assertNotContains(page, "Game Changers")

@@ -14,7 +14,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from . import decks as deckrules
-from . import archidekt, backup, brackets, importer, ocr, precons, rules, scryfall, search, services, spellbook
+from . import archidekt, backup, brackets, importer, suggest, ocr, precons, rules, scryfall, search, services, spellbook
 from .models import (Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, GlossaryTerm, LinkedProfile, Precon, PriceSnapshot,
                      Rule, RulesEdition)
 from .stats import build_dashboard
@@ -587,7 +587,7 @@ def deck_bracket(request, pk):
                                   f"({brackets.BRACKET_NAMES[deck.target_bracket]}).")
     else:
         messages.success(request, f"Cleared the intended bracket for {deck.name}.")
-    return redirect(reverse("collection:deck", args=[deck.pk]) + "#bracket")
+    return _back(request, reverse("collection:deck", args=[deck.pk]) + "#bracket")
 
 
 @require_POST
@@ -1152,3 +1152,78 @@ def archidekt_sync(request, pk):
     else:
         messages.success(request, f"Updated {deck.name} from Archidekt: {summary['copies']} cards.")
     return redirect("collection:deck", pk=deck.pk)
+
+
+
+# ------------------------------------------------------------------ Suggestions from your collection
+
+def _collection_cards(exclude_deck=None):
+    """One dict per card name you own (any printing): what suggest.py needs."""
+    items = CollectionItem.objects.select_related("card").order_by("card__name", "-card__details_loaded", "card__id")
+    in_decks = {}
+    rows = DeckCard.objects.select_related("deck").values_list("card__name", "deck__name", "deck_id")
+    for name, deck_name, deck_id in rows:
+        if exclude_deck is None or deck_id != exclude_deck.pk:
+            in_decks.setdefault(name, set()).add(deck_name)
+    cards = {}
+    for item in items:
+        c = item.card
+        row = cards.get(c.name)
+        if row is None:
+            cards[c.name] = row = {
+                "card_id": c.id, "name": c.name, "type_line": c.type_line, "oracle_text": c.oracle_text,
+                "color_identity": c.color_identity, "legalities": c.legalities or {}, "cmc": c.cmc,
+                "mana_cost": c.mana_cost, "game_changer": c.game_changer, "is_basic": c.is_basic_land,
+                "price": _f(c.best_price), "owned": 0, "in_decks": sorted(in_decks.get(c.name, [])),
+                "image_url": c.image_url,
+            }
+        row["owned"] += item.quantity
+    return list(cards.values())
+
+
+def deck_suggestions(request, pk):
+    deck = get_object_or_404(Deck.objects.prefetch_related("entries__card"), pk=pk)
+    entries = _deck_entries(deck)
+    result = suggest.suggestions(entries, _collection_cards(exclude_deck=deck), deck.format,
+                                 intended=deck.target_bracket)
+    return render(request, "collection/suggestions.html", {
+        "active_tab": "decks", "deck": deck, "s": result, "bracket_choices": Deck.BRACKET_CHOICES,
+        "default_board": "main",
+    })
+
+
+def commander_ideas(request):
+    ideas = suggest.commander_ideas(_collection_cards(), limit=24)
+    built = set(DeckCard.objects.filter(board="commander").values_list("card__name", flat=True))
+    for idea in ideas:
+        idea["built"] = idea["card"]["name"] in built
+    return render(request, "collection/commander_ideas.html", {
+        "active_tab": "decks", "ideas": ideas, "bracket_choices": Deck.BRACKET_CHOICES,
+    })
+
+
+@require_POST
+def deck_from_commander(request):
+    """Start a Commander deck around a commander you own, then go to its suggestions."""
+    card = get_object_or_404(Card, pk=request.POST.get("card_id"))
+    if not CollectionItem.objects.filter(card__name=card.name).exists():
+        messages.error(request, f"{card.name} isn't in your collection.")
+        return redirect("collection:commander_ideas")
+    bracket = request.POST.get("target_bracket", "")
+    deck = Deck.objects.create(name=card.name.split(" // ")[0][:100], format="commander",
+                               target_bracket=int(bracket) if bracket in {"1", "2", "3", "4", "5"} else None)
+    DeckCard.objects.create(deck=deck, card=card, board="commander", quantity=1)
+    messages.success(request, f"Started {deck.name}. Here's what your collection has for it.")
+    return redirect("collection:deck_suggestions", pk=deck.pk)
+
+
+@require_POST
+def deck_cut(request, pk):
+    """Remove every copy of a card from a deck (main and sideboard; never the commander)."""
+    deck = get_object_or_404(Deck, pk=pk)
+    name = request.POST.get("name", "")
+    removed, _ = DeckCard.objects.filter(deck=deck, card__name=name).exclude(board="commander").delete()
+    if removed:
+        deck.save(update_fields=["updated_at"])
+        messages.success(request, f"Cut {name} from {deck.name}.")
+    return _back(request, reverse("collection:deck_suggestions", args=[deck.pk]))

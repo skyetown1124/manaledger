@@ -173,6 +173,34 @@ Open http://127.0.0.1:8000/ and use **Add Cards** to search for your first card.
   the "value by day" chart, so the history grows the more often you refresh.
 - **Light mode** switches themes and remembers your choice in this browser.
 
+## Suggestions from your collection
+
+**Suggestions** (button on each deck page) lists cards you own that would fit
+the deck, without pushing it past the power level you want to keep:
+
+- **Power level.** Pick the bracket to keep at the top of the page (or leave it
+  at the bracket the deck plays at now). Every candidate card is added to the
+  deck and the bracket estimate run again; anything that would push it higher
+  (a Game Changer over the limit, mass land denial, a second extra-turn card, a
+  combo, too much impact score) is left out. The tiles show how much room is
+  left: Game Changers and impact points.
+- **Swaps.** If the deck already plays above the bracket you want, it lists
+  cuts that bring it down (extra Game Changers, combo pieces, the highest
+  impact cards), each paired with a card from your collection that does a
+  similar job.
+- **Roles and themes.** It counts ramp, card draw, removal, wipes and lands
+  against a typical Commander deck and favours what the deck is short on. It
+  also finds what the deck is about (tokens, sacrifice, graveyard, a creature
+  type, ...) and boosts cards that share it.
+- Cards must be in your collection, legal in the format and inside the
+  commander's colors. It says when a card is already in another of your decks.
+  **Add** puts it in the deck; **Cut** removes every copy of a card.
+
+**Commander ideas** (Decks tab) lists legendary creatures you own, ranked by
+how many of your other cards fit their colors. Pick a bracket and press **Start
+deck** to create the deck with that commander and go straight to its
+suggestions.
+
 ## Deck lists and precons
 
 **Import a deck list.** On a deck page press **Import list**, or paste a list
@@ -350,6 +378,7 @@ python manage.py refresh_prices
 | `collection/ocr.py` | Reads card photos with Tesseract and identifies each card |
 | `collection/importer.py` | Reads a pasted card or deck list (with Commander/Deck/Sideboard sections) and matches each line to a Scryfall printing |
 | `collection/precons.py` | Official precon catalog and decklists from MTGJSON |
+| `collection/suggest.py` | Deck suggestions: roles, themes, bracket-safe candidates, swaps, commander ideas |
 | `collection/archidekt.py` | Public Archidekt decks: a user's deck list and one deck's cards |
 | `collection/backup.py` | Backup download and all-or-nothing restore |
 | `collection/search.py` | Turns a search like `t:creature mv<=3` into a database filter, plus a plain-English summary |

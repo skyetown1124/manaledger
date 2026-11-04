@@ -675,3 +675,12 @@ kbd { font: 11px ui-monospace, Menlo, Consolas, monospace; border: 1px solid var
 .pt-sim-chance { display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, 200px) 70px auto; gap: 4px 10px; align-items: center; }
 .pt-sim-chance label { display: flex; flex-direction: column; }
 @media (max-width: 640px) { .pt-sim-chance { grid-template-columns: 1fr 70px auto; } .pt-sim-chance input[type=range] { grid-column: 1 / -1; grid-row: 2; } }
+
+/* ---- Suggestions ---- */
+.role-bars { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.role-bar { display: grid; grid-template-columns: 170px 1fr 70px; gap: 10px; align-items: center; font-size: 14px; }
+.role-bar .bar-track { display: block; }
+.bar.bar-short { background: var(--gold); }
+.bar.bar-ok { background: var(--up); }
+.chip.strong { border-color: var(--accent); font-weight: 600; }
+td.actions form + form { margin-top: 4px; }
