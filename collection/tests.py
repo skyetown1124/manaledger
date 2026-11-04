@@ -1629,9 +1629,10 @@ class SuggestLogicTests(TestCase):
         collection = [sc("Harmonize", "Draw three cards.", "Sorcery", "G", cmc=4),
                       sc("Another Rock", "{T}: Add {G}.")]
         result = suggest.suggestions(deck, collection, "commander")
-        draw = next(g for g in result["groups"] if g["role"] == "draw")
-        ramp = next(g for g in result["groups"] if g["role"] == "ramp")
-        self.assertGreater(draw["cards"][0]["score"], ramp["cards"][0]["score"])
+        roles = [g["role"] for g in result["groups"]]
+        self.assertEqual(roles[0], "draw")          # no draw at all: listed first
+        self.assertNotIn("ramp", roles)             # 12 ramp cards is enough: no ramp section
+        self.assertIn("Harmonize", [c["name"] for c in result["groups"][0]["cards"]])
 
     def test_commander_ideas(self):
         from . import suggest

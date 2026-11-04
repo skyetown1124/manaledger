@@ -340,16 +340,15 @@ def suggestions(entries, collection, fmt, intended=None, limit_per_group=8):
 
     groups = []
     used = set()
-    land_gap = next((g for g in gaps if g["role"] == "land"), {"gap": 0})
-    for role in ("ramp", "draw", "interaction", "wipe", "land", "tutor"):
-        if role == "land" and not land_gap["gap"]:
-            continue
-        if role == "tutor" and (target or 5) < 3:
-            continue
+    gap_of = {g["role"]: g for g in gaps}
+    # Biggest shortfall first (as a share of the target); roles the deck already has enough of are skipped.
+    short = sorted((g for g in gaps if g["gap"] > 0), key=lambda g: -g["gap"] / g["target"])
+    order = [g["role"] for g in short] + (["tutor"] if (target or 5) >= 3 else [])
+    for role in order:
         rows = [c for c in scored if role in c["roles"] and c["name"] not in used][:limit_per_group]
         if rows:
             used.update(c["name"] for c in rows)
-            gap = next((g for g in gaps if g["role"] == role), None)
+            gap = gap_of.get(role)
             groups.append({"role": role, "label": ROLE_LABELS[role], "gap": gap, "cards": rows})
     synergy = [c for c in scored if c["name"] not in used and not is_land(c)
                and any("theme" in r or "synergy" in r or r.startswith(("High impact", "Game Changer"))
