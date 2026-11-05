@@ -2,3 +2,8 @@
 __pycache__/
 *.pyc
 db.sqlite3
+
+# Local database backups (personal data, never commit)
+backups/
+db-*.sqlite3
+manaledger-backup-*.json
