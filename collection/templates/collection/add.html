@@ -47,6 +47,13 @@
               <input type="text" inputmode="decimal" name="purchase_price" id="paid-{{ r.scryfall_id }}" placeholder="Paid $" class="paid" title="What you paid per copy (optional)">
               <button type="submit" class="btn primary small">Add</button>
             </form>
+            <form method="post" action="{% url 'collection:want_add' %}" class="want-inline">
+              {% csrf_token %}
+              <input type="hidden" name="scryfall_id" value="{{ r.scryfall_id }}">
+              <input type="hidden" name="next" value="{{ request.get_full_path }}">
+              <button type="submit" class="btn ghost small" name="any_printing" value="0" title="Add this exact printing to your want list">Want this printing</button>
+              <button type="submit" class="btn ghost small" name="any_printing" value="1" title="Add the card to your want list; any printing will do">Want any printing</button>
+            </form>
           </div>
         </article>
       {% endfor %}

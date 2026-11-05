@@ -11,10 +11,10 @@ from django.core.management.color import no_style
 from django.db import connection, transaction
 from django.utils import timezone
 
-from .models import Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, LinkedProfile, PriceSnapshot
+from .models import Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, LinkedProfile, PriceSnapshot, WantItem
 
 # Order matters on restore: cards before anything that points at them.
-MODELS = [Card, CollectionItem, PriceSnapshot, CollectionSnapshot, Deck, DeckCard, LinkedProfile]
+MODELS = [Card, CollectionItem, PriceSnapshot, CollectionSnapshot, Deck, DeckCard, LinkedProfile, WantItem]
 LABELS = {m._meta.label_lower: m for m in MODELS}
 
 
@@ -26,6 +26,7 @@ def counts():
     return {
         "cards owned": sum(CollectionItem.objects.values_list("quantity", flat=True)),
         "decks": Deck.objects.count(),
+        "cards wanted": sum(WantItem.objects.values_list("quantity", flat=True)),
         "printings saved": Card.objects.count(),
         "price history entries": PriceSnapshot.objects.count(),
     }

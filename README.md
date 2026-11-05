@@ -173,6 +173,25 @@ Open http://127.0.0.1:8000/ and use **Add Cards** to search for your first card.
   the "value by day" chart, so the history grows the more often you refresh.
 - **Light mode** switches themes and remembers your choice in this browser.
 
+## Want list
+
+The **Want List** tab keeps track of cards you want to buy.
+
+- **Add cards** by name (leave the set blank if any printing will do), with
+  how many you want, the most you'd pay, a priority, and optionally the deck
+  it's for. Or press **Want this printing** / **Want any printing** on a card
+  in Add Cards, **Add to want list** on a card's page, or **Add these to my
+  want list** in a deck's "Cards you need" panel. **Paste a list** takes the
+  same format as Import.
+- **Prices.** Each card shows today's price for the finish you want; cards at
+  or under your "pay up to" price are marked. **Refresh prices** updates want
+  list cards too. The tiles show how many cards you want, the estimated cost,
+  and how many are at your price.
+- **Got it** moves the copies you bought into your collection (choose the
+  finish and, optionally, what you paid) and takes them off the list.
+- **Shopping list** text for TCGplayer Mass Entry or Card Kingdom. Filter the
+  list by deck. Want list cards are included in backups.
+
 ## Suggestions from your collection
 
 **Suggestions** (button on each deck page) lists cards you own that would fit

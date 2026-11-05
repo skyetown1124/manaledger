@@ -15,6 +15,11 @@
       <div><dt>Printing</dt><dd>{{ card.set_name }} · {{ card.set_code|upper }} #{{ card.collector_number }}</dd></div>
       <div><dt>Price</dt><dd>{{ card.usd|money }}{% if card.usd_foil %} · foil {{ card.usd_foil|money }}{% endif %}</dd></div>
       <div><dt>You own</dt><dd>{{ owned }} cop{{ owned|pluralize:"y,ies" }}</dd></div>
+      <div><dt>Want list</dt><dd>{% if wanted %}<a href="{% url 'collection:wants' %}">{{ wanted }} wanted</a>{% endif %}
+        <form method="post" action="{% url 'collection:want_add' %}" class="inline-form">
+          {% csrf_token %}<input type="hidden" name="card_id" value="{{ card.pk }}"><input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <button type="submit" class="btn small">{% if wanted %}Want one more{% else %}Add to want list{% endif %}</button>
+        </form></dd></div>
       {% if decks %}<div><dt>In decks</dt><dd>{% for d in decks %}<a href="{% url 'collection:deck' d.pk %}">{{ d.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</dd></div>{% endif %}
     </dl>
     {% if card.scryfall_uri %}<a class="small" href="{{ card.scryfall_uri }}" target="_blank" rel="noopener">View on Scryfall</a>{% endif %}

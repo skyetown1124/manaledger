@@ -11,7 +11,7 @@ import tempfile
 from django.core.management import call_command
 
 from . import decks, importer, scryfall, search
-from .models import Card, CollectionItem, Deck, DeckCard, LinkedProfile
+from .models import Card, CollectionItem, Deck, DeckCard, LinkedProfile, WantItem
 
 LEGAL_ALL = {f: "legal" for f in ("commander", "standard", "pioneer", "modern", "legacy", "vintage", "pauper")}
 
@@ -1702,3 +1702,79 @@ class AssetVersionTests(TestCase):
         page = self.client.get(reverse("collection:dashboard"))
         self.assertRegex(page.content.decode(), r'/static/collection/style\.css\?v=\d+')
         self.assertRegex(page.content.decode(), r'/static/collection/app\.js\?v=\d+')
+
+
+# ------------------------------------------------------------------ Want list
+
+@mock.patch.object(scryfall, "lookup", fake_lookup)
+@mock.patch.object(scryfall, "get_many", fake_get_many)
+class WantListTests(TestCase):
+    def test_add_by_name_merges_and_tracks_price(self):
+        url = reverse("collection:want_add")
+        self.client.post(url, {"name": "Sol Ring", "quantity": "1", "max_price": "2.00"})
+        self.client.post(url, {"name": "Sol Ring", "quantity": "2"})
+        item = WantItem.objects.get()
+        self.assertEqual((item.quantity, item.any_printing, str(item.max_price)), (3, True, "2.00"))
+        self.assertTrue(item.is_deal)            # $1.20 is under $2.00
+        page = self.client.get(reverse("collection:wants"))
+        self.assertContains(page, "At or under your price")
+        self.assertContains(page, "3 Sol Ring")  # shopping list
+
+    def test_add_exact_printing_and_unknown_name(self):
+        self.client.post(reverse("collection:want_add"), {"name": "Lightning Bolt", "set": "m10"})
+        item = WantItem.objects.get()
+        self.assertEqual((item.card.set_code, item.any_printing), ("m10", False))
+        with mock.patch.object(scryfall, "fuzzy", return_value=None):
+            page = self.client.post(reverse("collection:want_add"), {"name": "Nonsense Card"}, follow=True)
+        self.assertContains(page, "has no card named")
+        self.assertEqual(WantItem.objects.count(), 1)
+
+    def test_got_it_moves_to_collection(self):
+        self.client.post(reverse("collection:want_add"), {"name": "Sol Ring", "quantity": "3"})
+        item = WantItem.objects.get()
+        self.client.post(reverse("collection:want_got", args=[item.pk]), {"quantity": "2", "finish": "foil", "price_paid": "5"})
+        self.assertEqual(WantItem.objects.get().quantity, 1)
+        owned = CollectionItem.objects.get(card__name="Sol Ring")
+        self.assertEqual((owned.quantity, owned.finish, str(owned.purchase_price)), (2, "foil", "5.00"))
+        self.client.post(reverse("collection:want_got", args=[item.pk]), {"finish": "foil"})
+        self.assertFalse(WantItem.objects.exists())
+        self.assertEqual(CollectionItem.objects.get(card__name="Sol Ring").quantity, 3)
+
+    def test_update_and_remove(self):
+        self.client.post(reverse("collection:want_add"), {"name": "Sol Ring"})
+        item = WantItem.objects.get()
+        self.client.post(reverse("collection:want_update", args=[item.pk]),
+                         {"quantity": "4", "max_price": "", "priority": "1", "finish": "foil"})
+        item.refresh_from_db()
+        self.assertEqual((item.quantity, item.priority, item.finish, item.max_price), (4, 1, "foil", None))
+        self.client.post(reverse("collection:want_update", args=[item.pk]), {"remove": "1"})
+        self.assertFalse(WantItem.objects.exists())
+
+    def test_paste_a_list(self):
+        page = self.client.post(reverse("collection:want_import"),
+                                {"cards": "2 Lightning Bolt (2XM) 117\n1 Sol Ring *F*\n1 Nope Card", "priority": "1"}, follow=True)
+        self.assertContains(page, "Added 3 cards")
+        self.assertContains(page, "Skipped")
+        bolt = WantItem.objects.get(card__name="Lightning Bolt")
+        self.assertEqual((bolt.quantity, bolt.any_printing, bolt.priority), (2, False, 1))
+        self.assertEqual(WantItem.objects.get(card__name="Sol Ring").finish, "foil")
+
+    def test_from_deck_needs_and_card_page(self):
+        ring = make_card("Sol Ring")
+        deck = Deck.objects.create(name="D", format="casual")
+        DeckCard.objects.create(deck=deck, card=ring, quantity=2)
+        self.client.post(reverse("collection:deck_want_needed", args=[deck.pk]))
+        self.client.post(reverse("collection:deck_want_needed", args=[deck.pk]))  # again: no duplicates
+        item = WantItem.objects.get()
+        self.assertEqual((item.quantity, item.deck), (2, deck))
+        page = self.client.get(reverse("collection:card", args=[ring.pk]))
+        self.assertContains(page, "2 wanted")
+        self.client.post(reverse("collection:want_add"), {"card_id": ring.pk})
+        self.assertEqual(WantItem.objects.count(), 2)  # not for a deck: its own row
+
+    def test_want_cards_get_price_refreshes(self):
+        from . import services
+        self.client.post(reverse("collection:want_add"), {"name": "Sol Ring"})
+        with mock.patch.object(scryfall, "get_many", return_value=([], [])) as get_many:
+            services.refresh_prices()
+        self.assertIn("cmm-410", get_many.call_args[0][0])

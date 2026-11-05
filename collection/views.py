@@ -15,7 +15,7 @@ from django.views.decorators.http import require_POST
 
 from . import decks as deckrules
 from . import archidekt, backup, brackets, importer, suggest, ocr, precons, rules, scryfall, search, services, spellbook
-from .models import (Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, GlossaryTerm, LinkedProfile, Precon, PriceSnapshot,
+from .models import (Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, GlossaryTerm, LinkedProfile, Precon, PriceSnapshot, WantItem,
                      Rule, RulesEdition)
 from .stats import build_dashboard
 
@@ -890,6 +890,7 @@ def card_detail(request, pk):
                 keyword_rules.append({"keyword": kw, "number": number, "parts": parts})
 
     owned = CollectionItem.objects.filter(card__name=card.name).aggregate(n=Sum("quantity"))["n"] or 0
+    wanted = WantItem.objects.filter(card__name=card.name).aggregate(n=Sum("quantity"))["n"] or 0
     decks = sorted({e.deck for e in DeckCard.objects.filter(card__name=card.name).select_related("deck")},
                    key=lambda d: d.name)
     legal = sorted(((fmt, status) for fmt, status in (card.legalities or {}).items()
@@ -897,6 +898,7 @@ def card_detail(request, pk):
     return render(request, "collection/card.html", {
         "active_tab": "cards", "card": card, "rulings": list(card.rulings.all()),
         "rulings_error": rulings_error, "keyword_rules": keyword_rules, "owned": owned, "decks": decks,
+        "wanted": wanted,
         "legal": legal, "rules_loaded": RulesEdition.objects.exists(),
     })
 
@@ -1227,3 +1229,171 @@ def deck_cut(request, pk):
         deck.save(update_fields=["updated_at"])
         messages.success(request, f"Cut {name} from {deck.name}.")
     return _back(request, reverse("collection:deck_suggestions", args=[deck.pk]))
+
+
+
+# ------------------------------------------------------------------ Want list
+
+def _want_fields(post):
+    finish = post.get("finish", "any")
+    if finish not in dict(WantItem.FINISH_CHOICES):
+        finish = "any"
+    priority = post.get("priority", "2")
+    priority = int(priority) if priority in {"1", "2", "3"} else 2
+    deck = Deck.objects.filter(pk=post.get("deck") or 0).first()
+    return {
+        "quantity": max(1, min(99, _positive_int(post.get("quantity"), 1))),
+        "finish": finish, "priority": priority, "deck": deck,
+        "max_price": _decimal_or_none(post.get("max_price")),
+        "note": post.get("note", "").strip(),
+    }
+
+
+def want_list(request):
+    deck_filter = request.GET.get("deck", "")
+    items = WantItem.objects.select_related("card", "deck")
+    if deck_filter == "none":
+        items = items.filter(deck__isnull=True)
+    elif deck_filter.isdigit():
+        items = items.filter(deck_id=int(deck_filter))
+    items = list(items)
+    owned = _owned_by_name()
+    for i in items:
+        i.owned = owned.get(i.card.name, 0)
+    total = sum((i.total for i in items if i.total is not None), Decimal("0"))
+    deals = [i for i in items if i.is_deal]
+    return render(request, "collection/wants.html", {
+        "active_tab": "wants", "items": items, "deck_filter": deck_filter,
+        "decks": Deck.objects.order_by("name"), "wanted_decks": Deck.objects.filter(wants__isnull=False).distinct().order_by("name"),
+        "copies": sum(i.quantity for i in items), "total": total, "deals": len(deals),
+        "unpriced": sum(1 for i in items if i.unit_price is None),
+        "high": sum(i.quantity for i in items if i.priority == 1),
+        "buy_list": "\n".join(f"{i.quantity} {i.card.name}" + ("" if i.any_printing else f" ({i.card.set_code.upper()}) {i.card.collector_number}")
+                              for i in items),
+        "finishes": WantItem.FINISH_CHOICES, "priorities": WantItem.PRIORITY_CHOICES,
+        "q": request.GET.get("q", ""),
+    })
+
+
+@require_POST
+def want_add(request):
+    """Add by card id (card page, deck pages), by printing (Add Cards results), or by name and set."""
+    fields = _want_fields(request.POST)
+    back = reverse("collection:wants")
+    try:
+        if request.POST.get("card_id"):
+            card = get_object_or_404(Card, pk=request.POST["card_id"])
+            any_printing = request.POST.get("any_printing", "1") == "1"
+        elif request.POST.get("scryfall_id"):
+            card = services.save_card(scryfall.get_card(request.POST["scryfall_id"]))
+            any_printing = request.POST.get("any_printing", "0") == "1"
+        else:
+            name = request.POST.get("name", "").strip()
+            set_code = request.POST.get("set", "").strip().lower()
+            if not name:
+                messages.error(request, "Type a card name.")
+                return _back(request, back)
+            data = None
+            if set_code:
+                found, _ = scryfall.lookup([{"name": name, "set": set_code}])
+                data = found[0] if found else None
+            if data is None:
+                found, _ = scryfall.lookup([{"name": name}])
+                data = found[0] if found else scryfall.fuzzy(name)
+            if data is None:
+                messages.error(request, f'Scryfall has no card named "{name}". Check the spelling.')
+                return _back(request, back)
+            card = services.save_card(data)
+            any_printing = not set_code
+    except scryfall.ScryfallError as exc:
+        messages.error(request, f"Couldn't add that card. {exc}")
+        return _back(request, back)
+    item, created = services.add_want(card, any_printing=any_printing, **fields)
+    where = f" for {item.deck.name}" if item.deck else ""
+    if created:
+        messages.success(request, f"Added {item.quantity} x {card.name} to your want list{where}.")
+    else:
+        messages.success(request, f"You now want {item.quantity} x {card.name}{where}.")
+    return _back(request, back)
+
+
+@require_POST
+def want_update(request, pk):
+    item = get_object_or_404(WantItem, pk=pk)
+    qty = _positive_int(request.POST.get("quantity"), item.quantity)
+    if qty == 0 or request.POST.get("remove"):
+        item.delete()
+        messages.success(request, f"Took {item.card.name} off your want list.")
+        return _back(request, reverse("collection:wants"))
+    fields = _want_fields(request.POST)
+    item.quantity = min(qty, 99)
+    item.max_price = fields["max_price"]
+    item.priority = fields["priority"]
+    item.finish = fields["finish"]
+    item.save()
+    messages.success(request, f"Saved {item.card.name}.")
+    return _back(request, reverse("collection:wants"))
+
+
+@require_POST
+def want_got(request, pk):
+    """Bought it: move the copies into the collection."""
+    item = get_object_or_404(WantItem.objects.select_related("card"), pk=pk)
+    qty = _positive_int(request.POST.get("quantity"), item.quantity) or item.quantity
+    name = item.card.name
+    left = max(0, item.quantity - qty)
+    owned = services.got_want(item, qty, request.POST.get("finish"), _decimal_or_none(request.POST.get("price_paid")))
+    msg = f"Added {qty} x {name} ({owned.get_finish_display().lower()}) to your collection."
+    msg += f" Still want {left}." if left else " It's off your want list."
+    messages.success(request, msg)
+    return _back(request, reverse("collection:wants"))
+
+
+@require_POST
+def want_import(request):
+    """Paste a list (same format as Import) straight onto the want list."""
+    text = request.POST.get("cards", "")
+    fields = _want_fields(request.POST)
+    fields.pop("quantity")
+    if not text.strip():
+        messages.error(request, "Paste at least one card, one per line.")
+        return redirect("collection:wants")
+    try:
+        result = importer.resolve(text, scryfall.lookup)
+    except scryfall.ScryfallError as exc:
+        messages.error(request, f"Couldn't check the list. {exc}")
+        return redirect("collection:wants")
+    added = 0
+    for m in result.matches:
+        card = services.save_card(m.card)
+        services.add_want(card, quantity=m.line.quantity, any_printing=not m.line.set_code,
+                          **dict(fields, finish=m.finish if m.finish != "nonfoil" else fields["finish"]))
+        added += m.line.quantity
+    msg = f"Added {added} card{'s' if added != 1 else ''} to your want list."
+    if result.problems:
+        msg += " Skipped: " + "; ".join(f"line {p.number}: {p.message}" for p in result.problems[:5])
+        if len(result.problems) > 5:
+            msg += f" (and {len(result.problems) - 5} more)"
+    (messages.warning if result.problems else messages.success)(request, msg)
+    return redirect("collection:wants")
+
+
+@require_POST
+def deck_want_needed(request, pk):
+    """Put every card a deck still needs on the want list, for that deck."""
+    deck = get_object_or_404(Deck.objects.prefetch_related("entries__card"), pk=pk)
+    needs = deckrules.needed_cards(_deck_entries(deck))
+    added = 0
+    for n in needs:
+        card = Card.objects.get(pk=n["card_id"])
+        current = WantItem.objects.filter(deck=deck, card__name=card.name).first()
+        if current:
+            if current.quantity < n["need"]:
+                current.quantity = n["need"]
+                current.save()
+            continue
+        services.add_want(card, quantity=n["need"], deck=deck)
+        added += n["need"]
+    messages.success(request, f"Added {added} card{'s' if added != 1 else ''} from {deck.name} to your want list."
+                     if added else f"Everything {deck.name} needs is already on your want list.")
+    return redirect(reverse("collection:wants") + f"?deck={deck.pk}")

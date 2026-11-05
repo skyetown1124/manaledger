@@ -283,3 +283,48 @@ class LinkedProfile(models.Model):
 
     def __str__(self):
         return f"{self.get_site_display()}: {self.username}"
+
+
+class WantItem(models.Model):
+    """A card you want to buy: how many, in what finish, and the most you'd pay."""
+
+    FINISH_CHOICES = [("any", "Any finish")] + CollectionItem.FINISH_CHOICES
+    PRIORITY_CHOICES = [(1, "High"), (2, "Normal"), (3, "Low")]
+
+    card = models.ForeignKey(Card, on_delete=models.CASCADE, related_name="wants",
+                             help_text="The printing you want, or the one used for prices when any printing will do.")
+    any_printing = models.BooleanField(default=True)
+    finish = models.CharField(max_length=10, choices=FINISH_CHOICES, default="any")
+    quantity = models.PositiveIntegerField(default=1)
+    max_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True,
+                                    help_text="Buy at or below this price per copy (optional).")
+    priority = models.PositiveSmallIntegerField(choices=PRIORITY_CHOICES, default=2)
+    deck = models.ForeignKey(Deck, on_delete=models.SET_NULL, null=True, blank=True, related_name="wants",
+                             help_text="The deck you want it for (optional).")
+    note = models.CharField(max_length=200, blank=True)
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["priority", "card__name"]
+
+    def __str__(self):
+        return f"Want {self.quantity} x {self.card.name}"
+
+    @property
+    def unit_price(self):
+        """Current price for the finish you want (any finish: the cheapest listed)."""
+        if self.finish == "any":
+            prices = [p for p in (self.card.usd, self.card.usd_foil, self.card.usd_etched) if p is not None]
+            return min(prices) if prices else None
+        return self.card.price_for(self.finish)
+
+    @property
+    def total(self):
+        price = self.unit_price
+        return price * self.quantity if price is not None else None
+
+    @property
+    def is_deal(self):
+        """The current price is at or under your target."""
+        price = self.unit_price
+        return self.max_price is not None and price is not None and price <= self.max_price

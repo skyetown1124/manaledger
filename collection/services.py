@@ -206,9 +206,9 @@ def basic_land(name):
 
 
 def refresh_prices():
-    """Pull current prices and card text for every card you own or use in a deck."""
+    """Pull current prices and card text for every card you own, use in a deck or want."""
     ids = list(
-        Card.objects.filter(Q(items__isnull=False) | Q(deck_entries__isnull=False))
+        Card.objects.filter(Q(items__isnull=False) | Q(deck_entries__isnull=False) | Q(wants__isnull=False))
         .distinct().values_list("scryfall_id", flat=True)
     )
     if not ids:
@@ -219,3 +219,47 @@ def refresh_prices():
             save_card(data)
         total = record_collection_value()
     return {"updated": len(fresh), "missing": missing, "total": total}
+
+
+# ------------------------------------------------------------------ Want list
+
+def add_want(card, quantity=1, any_printing=True, finish="any", max_price=None, priority=2, deck=None, note=""):
+    """Add a card to the want list. The same card (any printing, or the same printing),
+    finish and deck already on the list just gets more copies. Returns (item, created)."""
+    from .models import WantItem
+
+    match = WantItem.objects.filter(finish=finish, deck=deck, any_printing=any_printing)
+    match = match.filter(card__name=card.name) if any_printing else match.filter(card=card)
+    item = match.first()
+    if item:
+        item.quantity += quantity
+        if max_price is not None:
+            item.max_price = max_price
+        if priority < item.priority:
+            item.priority = priority
+        item.save()
+        return item, False
+    return WantItem.objects.create(card=card, quantity=quantity, any_printing=any_printing, finish=finish,
+                                   max_price=max_price, priority=priority, deck=deck, note=note[:200]), True
+
+
+@transaction.atomic
+def got_want(item, quantity, finish=None, price_paid=None):
+    """You bought `quantity` copies: add them to the collection and take them off the want list."""
+    finish = finish if finish in dict(CollectionItem.FINISH_CHOICES) else (
+        item.finish if item.finish in dict(CollectionItem.FINISH_CHOICES) else "nonfoil")
+    quantity = max(1, min(quantity, 999))
+    owned, created = CollectionItem.objects.get_or_create(
+        card=item.card, finish=finish, defaults={"quantity": quantity, "purchase_price": price_paid})
+    if not created:
+        owned.quantity += quantity
+        if price_paid is not None:
+            owned.purchase_price = price_paid
+        owned.save()
+    if quantity >= item.quantity:
+        item.delete()
+    else:
+        item.quantity -= quantity
+        item.save()
+    record_collection_value()
+    return owned

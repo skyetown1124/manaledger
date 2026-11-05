@@ -1,0 +1,160 @@
+{% extends "collection/base.html" %}
+{% load money cards %}
+{% block title %}Want List · Mana Ledger{% endblock %}
+{% block heading %}Want List{% endblock %}
+
+{% block content %}
+<section class="kpis">
+  <div class="kpi kpi-blue">
+    <div class="kpi-label">Cards wanted</div>
+    <div class="kpi-value">{{ copies }}</div>
+    <div class="kpi-sub">{{ items|length }} different card{{ items|length|pluralize }}{% if high %} · {{ high }} high priority{% endif %}</div>
+  </div>
+  <div class="kpi kpi-gold">
+    <div class="kpi-label">Estimated cost</div>
+    <div class="kpi-value">{{ total|money }}</div>
+    <div class="kpi-sub">At today's market prices{% if unpriced %} · {{ unpriced }} without a price{% endif %}</div>
+  </div>
+  <div class="kpi {% if deals %}kpi-good{% else %}kpi-green{% endif %}">
+    <div class="kpi-label">At or under your price</div>
+    <div class="kpi-value">{{ deals }}</div>
+    <div class="kpi-sub">Cards selling for your target price or less</div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="section-head"><span>Add a card</span></div>
+  <form method="post" action="{% url 'collection:want_add' %}" class="want-form" autocomplete="off">
+    {% csrf_token %}
+    <label for="want-name" class="sr">Card name</label>
+    <input type="text" id="want-name" name="name" placeholder="Card name" class="wide-text" list="want-names" data-autocomplete="{% url 'collection:autocomplete' %}" required>
+    <datalist id="want-names"></datalist>
+    <label for="want-set" class="sr">Set code (optional)</label>
+    <input type="text" id="want-set" name="set" placeholder="Set (optional)" maxlength="8" class="set-input">
+    <label for="want-qty" class="small">Qty</label>
+    <input type="number" id="want-qty" name="quantity" value="1" min="1" max="99" class="qty">
+    <label for="want-max" class="small">Pay up to $</label>
+    <input type="text" id="want-max" name="max_price" placeholder="any" inputmode="decimal" class="qty money-input">
+    <label for="want-priority" class="sr">Priority</label>
+    <select id="want-priority" name="priority" class="compact">{% for v, l in priorities %}<option value="{{ v }}" {% if v == 2 %}selected{% endif %}>{{ l }} priority</option>{% endfor %}</select>
+    <label for="want-deck" class="sr">For deck</label>
+    <select id="want-deck" name="deck" class="compact"><option value="">No deck</option>{% for d in decks %}<option value="{{ d.pk }}">For {{ d.name }}</option>{% endfor %}</select>
+    <button type="submit" class="btn primary">Add to want list</button>
+  </form>
+  <p class="note">Leave the set blank if any printing will do. You can also press <strong>Want</strong> on a printing in Add Cards, on a card's page, or send a deck's missing cards here from its deck page.</p>
+  <details class="search-help">
+    <summary>Paste a list</summary>
+    <form method="post" action="{% url 'collection:want_import' %}" class="stack">
+      {% csrf_token %}
+      <label class="sr" for="want-list-text">Cards, one per line</label>
+      <textarea id="want-list-text" name="cards" rows="6" class="export" placeholder="1 Rhystic Study&#10;4 Lightning Bolt (2XM) 117&#10;1 Sol Ring *F*" required></textarea>
+      <div class="row-actions">
+        <select name="priority" class="compact" aria-label="Priority">{% for v, l in priorities %}<option value="{{ v }}" {% if v == 2 %}selected{% endif %}>{{ l }} priority</option>{% endfor %}</select>
+        <select name="deck" class="compact" aria-label="For deck"><option value="">No deck</option>{% for d in decks %}<option value="{{ d.pk }}">For {{ d.name }}</option>{% endfor %}</select>
+        <button type="submit" class="btn">Add list</button>
+        <span class="small muted">Same format as Import. A set code means that exact printing.</span>
+      </div>
+    </form>
+  </details>
+</section>
+
+<section class="panel">
+  <div class="section-head">
+    <span>Wanted</span>
+    <span class="spacer"></span>
+    {% if wanted_decks %}
+      <form method="get" class="precon-build">
+        <label for="want-filter" class="small">Show</label>
+        <select id="want-filter" name="deck" class="compact" onchange="this.form.submit()">
+          <option value="">Everything</option>
+          <option value="none" {% if deck_filter == "none" %}selected{% endif %}>Not for a deck</option>
+          {% for d in wanted_decks %}<option value="{{ d.pk }}" {% if deck_filter == d.pk|stringformat:"d" %}selected{% endif %}>For {{ d.name }}</option>{% endfor %}
+        </select>
+        <noscript><button type="submit" class="btn small">Show</button></noscript>
+      </form>
+    {% endif %}
+  </div>
+  {% if items %}
+    <div class="table-wrap">
+      <table class="data want-table">
+        <thead><tr><th>Card</th><th>Want</th><th class="num">Price now</th><th>Pay up to</th><th>Priority</th><th></th></tr></thead>
+        <tbody>
+          {% for i in items %}
+            <tr class="{% if i.is_deal %}deal{% endif %}">
+              <td class="card-cell">
+                <div class="card-name"><a href="{% url 'collection:card' i.card.pk %}">{{ i.card.name }}</a> {{ i.card.mana_cost|mana }}</div>
+                <div class="muted small">
+                  {% if i.any_printing %}Any printing{% else %}{{ i.card.set_name }} ({{ i.card.set_code|upper }} #{{ i.card.collector_number }}){% endif %}
+                  {% if i.deck %} · for <a href="{% url 'collection:deck' i.deck.pk %}">{{ i.deck.name }}</a>{% endif %}
+                  {% if i.owned %} · you own {{ i.owned }}{% endif %}
+                </div>
+                {% if i.is_deal %}<div class="small deal-note">At or under your price</div>{% endif %}
+              </td>
+              <td>
+                <input class="qty" type="number" min="0" max="99" name="quantity" value="{{ i.quantity }}" form="want-{{ i.pk }}" aria-label="Copies of {{ i.card.name }} wanted">
+                <select name="finish" form="want-{{ i.pk }}" class="compact" aria-label="Finish">{% for v, l in finishes %}<option value="{{ v }}" {% if v == i.finish %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+              </td>
+              <td class="num">{{ i.unit_price|money }}{% if i.quantity > 1 and i.total is not None %}<div class="small muted">{{ i.total|money }} for {{ i.quantity }}</div>{% endif %}</td>
+              <td><input type="text" name="max_price" value="{{ i.max_price|default_if_none:'' }}" placeholder="any" inputmode="decimal" class="qty money-input" form="want-{{ i.pk }}" aria-label="Most you'd pay for {{ i.card.name }}"></td>
+              <td><select name="priority" form="want-{{ i.pk }}" class="compact priority-{{ i.priority }}" aria-label="Priority">{% for v, l in priorities %}<option value="{{ v }}" {% if v == i.priority %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></td>
+              <td class="actions">
+                <form method="post" action="{% url 'collection:want_update' i.pk %}" id="want-{{ i.pk }}">
+                  {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+                  <button type="submit" class="btn small">Save</button>
+                </form>
+                <details class="got-it">
+                  <summary class="btn small primary">Got it</summary>
+                  <form method="post" action="{% url 'collection:want_got' i.pk %}" class="stack got-form">
+                    {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    <label class="small">Copies <input type="number" name="quantity" value="{{ i.quantity }}" min="1" max="{{ i.quantity }}" class="qty"></label>
+                    <label class="small">Finish
+                      <select name="finish" class="compact">{% for v, l in finishes %}{% if v != "any" %}<option value="{{ v }}" {% if v == i.finish %}selected{% endif %}>{{ l }}</option>{% endif %}{% endfor %}</select>
+                    </label>
+                    <label class="small">Paid $ <input type="text" name="price_paid" placeholder="optional" inputmode="decimal" class="qty money-input"></label>
+                    <button type="submit" class="btn small primary">Add to my collection</button>
+                  </form>
+                </details>
+                <form method="post" action="{% url 'collection:want_update' i.pk %}">
+                  {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><input type="hidden" name="remove" value="1">
+                  <button type="submit" class="btn small ghost" aria-label="Remove {{ i.card.name }}">Remove</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="grid-2 inner want-export">
+      <div>
+        <label class="kpi-label" for="want-text">Shopping list</label>
+        <textarea id="want-text" class="export" rows="8" readonly>{{ buy_list }}</textarea>
+        <div class="row-actions">
+          <button type="button" class="btn" id="copy-wants">Copy shopping list</button>
+          <span class="small muted" id="copy-wants-status" role="status"></span>
+        </div>
+      </div>
+      <p class="note">Pastes into TCGplayer Mass Entry, Card Kingdom or most store "buy a list" boxes. Cards with a set code mean that exact printing. Press <strong>Refresh prices</strong> at the top to update prices on your want list too.</p>
+    </div>
+  {% else %}
+    <div class="empty compact">
+      <h2>{% if deck_filter %}Nothing wanted here{% else %}Your want list is empty{% endif %}</h2>
+      <p>Add a card above, press <strong>Want</strong> on a card in Add Cards, or open a deck and send the cards it needs here.</p>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    var button = document.getElementById("copy-wants");
+    if (!button) return;
+    button.addEventListener("click", async function () {
+      var box = document.getElementById("want-text");
+      var status = document.getElementById("copy-wants-status");
+      try { await navigator.clipboard.writeText(box.value); status.textContent = "Copied."; }
+      catch (e) { box.focus(); box.select(); status.textContent = "Press Ctrl+C (or Cmd+C) to copy."; }
+    });
+  })();
+</script>
+{% endblock %}

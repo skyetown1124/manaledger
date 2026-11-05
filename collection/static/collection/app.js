@@ -22,7 +22,7 @@
 
   // Suggest card names from Scryfall as you type on the Add Cards page.
   const input = document.querySelector("[data-autocomplete]");
-  const list = document.getElementById("name-suggestions");
+  const list = input && document.getElementById(input.getAttribute("list"));
   if (input && list) {
     let timer = null;
     let lastQuery = "";

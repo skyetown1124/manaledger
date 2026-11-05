@@ -124,6 +124,7 @@ a:hover { color: var(--accent); }
 .message { padding: 9px 14px; border-radius: 4px; border: 1px solid var(--line); background: var(--panel); border-left: 4px solid var(--accent); }
 .message.success { border-left-color: var(--green); }
 .message.error { border-left-color: var(--down); }
+.message.warning { border-left-color: var(--gold); }
 
 /* ---------- KPI tiles ---------- */
 .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
@@ -690,3 +691,23 @@ td.actions form + form { margin-top: 4px; }
 .pt-sim-status > span:nth-child(2) { flex: 1 1 320px; }
 .pt-sim-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--down); box-shadow: 0 0 0 3px color-mix(in srgb, var(--down) 25%, transparent); flex: none; }
 .pt-sim-dot.off { background: var(--gray); box-shadow: none; }
+
+/* ---- Want list ---- */
+.want-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.want-form .set-input { width: 110px; }
+.money-input { width: 80px; }
+.want-table td { vertical-align: top; }
+.want-table tr.deal td:first-child { box-shadow: inset 3px 0 0 var(--up); }
+.deal-note { color: var(--up); font-weight: 600; }
+.priority-1 { border-color: var(--down); }
+.got-it { display: inline-block; }
+.got-it > summary { list-style: none; display: inline-block; cursor: pointer; }
+.got-it > summary::-webkit-details-marker { display: none; }
+.got-form { margin-top: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; min-width: 190px; }
+.want-export { margin-top: 16px; }
+.want-inline { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.inline-form { display: inline; margin-left: 6px; }
+td.actions form + details, td.actions details + form { margin-top: 4px; }
+.want-table td.actions { display: table-cell; text-align: right; white-space: nowrap; }
+.want-table td.actions > form, .want-table td.actions > details { display: inline-block; vertical-align: top; margin: 0 0 0 4px; }
+.want-table .got-form { text-align: left; white-space: normal; }

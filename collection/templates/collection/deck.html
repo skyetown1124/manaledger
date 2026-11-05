@@ -404,6 +404,10 @@
         <span class="small muted" role="status" id="buy-status"></span>
       </div>
       <p class="note">Pastes into TCGplayer Mass Entry, Card Kingdom's deck builder, or most store "buy a list" boxes.</p>
+      <form method="post" action="{% url 'collection:deck_want_needed' deck.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn">Add these to my want list</button>
+      </form>
       <form method="post" action="{% url 'collection:deck_collect_needed' deck.pk %}" class="stack got-them">
         {% csrf_token %}
         <label class="check" for="confirm-got"><input type="checkbox" id="confirm-got" name="confirm" value="yes" required> I've got these cards</label>
