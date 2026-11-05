@@ -372,7 +372,10 @@ def analyze(fmt, entries):
         check["info"] = True
         checks.append(check)
     else:
-        checks.append(_ok("You own every card", "Basic lands don't need to be in your library."))
+        proxied = sum(min(e.get("proxies", 0), e["quantity"]) for e in entries)
+        checks.append(_ok("You own every card" if not proxied else "You own or proxy every card",
+                          "Basic lands don't need to be in your library." if not proxied
+                          else f"{proxied} cop{'y is a proxy' if proxied == 1 else 'ies are proxies'}."))
 
     value = sum((e["price"] or 0) * e["quantity"] for e in entries)
     top_symbol = max(symbol_counts.values(), default=0) or 1
@@ -394,6 +397,7 @@ def analyze(fmt, entries):
         "checks": checks,
         "issues": sum(1 for c in checks if not c["ok"] and not c.get("info")),
         "needs": needs,
+        "proxy_count": sum(min(e.get("proxies", 0), e["quantity"]) for e in entries),
         "need_copies": sum(n["need"] for n in needs),
         "need_cost": round(sum(n["cost"] for n in needs if n["cost"] is not None), 2),
         "need_unpriced": sum(1 for n in needs if n["cost"] is None),
@@ -403,21 +407,22 @@ def analyze(fmt, entries):
 
 def needed_cards(entries):
     """Cards the deck uses that you don't own enough of, by card name (any printing
-    you own counts). Basic lands are left out. Each row: name, used, owned, need,
+    you own counts; copies marked as proxies don't need buying). Basic lands are left out. Each row: name, used, owned, need,
     price (each, for the deck's printing), cost, card_id, set_code."""
     rows = {}
     for e in entries:
         if e["is_basic"]:
             continue
-        row = rows.setdefault(e["name"], {"name": e["name"], "owned": e["owned"], "used": 0,
+        row = rows.setdefault(e["name"], {"name": e["name"], "owned": e["owned"], "used": 0, "proxied": 0,
                                           "price": e["price"], "card_id": e["card_id"],
                                           "set_code": e["set_code"], "collector_number": e["collector_number"]})
         row["used"] += e["quantity"]
+        row["proxied"] += min(e.get("proxies", 0), e["quantity"])
         if row["price"] is None:
             row["price"] = e["price"]
     needs = []
     for row in rows.values():
-        row["need"] = max(0, row["used"] - row["owned"])
+        row["need"] = max(0, row["used"] - row["owned"] - row["proxied"])
         if row["need"]:
             row["cost"] = round(row["price"] * row["need"], 2) if row["price"] is not None else None
             needs.append(row)

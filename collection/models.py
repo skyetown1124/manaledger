@@ -169,6 +169,7 @@ class DeckCard(models.Model):
     card = models.ForeignKey(Card, on_delete=models.CASCADE, related_name="deck_entries")
     board = models.CharField(max_length=10, choices=BOARD_CHOICES, default="main")
     quantity = models.PositiveIntegerField(default=1)
+    proxies = models.PositiveIntegerField(default=0, help_text="How many of these copies are proxies (stand-ins you play instead of the real card).")
 
     class Meta:
         ordering = ["card__name"]

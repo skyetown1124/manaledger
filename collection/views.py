@@ -457,7 +457,8 @@ def _deck_entries(deck, owned=None, by_name=None):
             "price": _f(c.best_price), "owned": by_name.get(c.name, 0), "is_basic": c.is_basic_land,
             "scryfall_uri": c.scryfall_uri, "image_url": c.image_url,
             "limit": _copy_limit(deck, c),
-            "game_changer": c.game_changer,
+            "game_changer": c.game_changer, "proxies": min(entry.proxies, entry.quantity),
+            "power": c.power, "toughness": c.toughness, "loyalty": c.loyalty,
         })
     return rows
 
@@ -694,16 +695,8 @@ def deck_entry_update(request, pk):
         messages.error(request, str(exc))
         return _back(request, back)
 
-    if not card.is_basic_land:
-        owned = _sum_quantity(CollectionItem.objects.filter(card=card))
-        others = _sum_quantity(DeckCard.objects.filter(deck=deck, card=card).exclude(pk=entry.pk))
-        if qty > owned - others:
-            qty = max(0, owned - others)
-            note = f" You own {owned}, so it's capped at {qty}."
-            if qty == 0:
-                entry.delete()
-                messages.error(request, f"All your copies of {card.name} are already used elsewhere in this deck.")
-                return _back(request, back)
+    # Owning the card isn't required: copies you don't have show up under "Cards you need"
+    # (or as proxies). Format rules (copy limits, legality) still apply above.
 
     with transaction.atomic():
         target = DeckCard.objects.filter(deck=deck, card=card, board=board).exclude(pk=entry.pk).first()
@@ -713,6 +706,11 @@ def deck_entry_update(request, pk):
             entry.delete()
         else:
             entry.quantity, entry.board = qty, board
+            if "proxies" in request.POST:
+                entry.proxies = min(_positive_int(request.POST.get("proxies"), entry.proxies), qty)
+            elif "proxy" in request.POST or request.POST.get("proxy_form"):
+                entry.proxies = qty if request.POST.get("proxy") else 0
+            entry.proxies = min(entry.proxies, qty)
             entry.save()
         deck.save(update_fields=["updated_at"])
     messages.success(request, f"Updated {card.name}.{note}")
@@ -1397,3 +1395,58 @@ def deck_want_needed(request, pk):
     messages.success(request, f"Added {added} card{'s' if added != 1 else ''} from {deck.name} to your want list."
                      if added else f"Everything {deck.name} needs is already on your want list.")
     return redirect(reverse("collection:wants") + f"?deck={deck.pk}")
+
+
+
+# ------------------------------------------------------------------ Proxies
+
+@require_POST
+def deck_proxy(request, pk):
+    """Mark the copies a deck still needs as proxies: one card (name=...) or all of them."""
+    deck = get_object_or_404(Deck.objects.prefetch_related("entries__card"), pk=pk)
+    only = request.POST.get("name")
+    needs = [n for n in deckrules.needed_cards(_deck_entries(deck)) if not only or n["name"] == only]
+    marked = 0
+    with transaction.atomic():
+        for n in needs:
+            left = n["need"]
+            entries = sorted((e for e in deck.entries.all() if e.card.name == n["name"]),
+                             key=lambda e: {"commander": 0, "main": 1, "side": 2}.get(e.board, 3))
+            for entry in entries:
+                room = entry.quantity - entry.proxies
+                take = min(room, left)
+                if take > 0:
+                    entry.proxies += take
+                    entry.save(update_fields=["proxies"])
+                    left -= take
+                    marked += take
+        deck.save(update_fields=["updated_at"])
+    messages.success(request, f"Marked {marked} cop{'y' if marked == 1 else 'ies'} as proxies."
+                     if marked else "Nothing to mark: you own or proxy every card.")
+    return _back(request, reverse("collection:deck", args=[deck.pk]) + "#needs")
+
+
+def deck_proxies(request, pk):
+    """Printable proxy sheet: the deck's proxies (or every card), at real card size."""
+    deck = get_object_or_404(Deck.objects.prefetch_related("entries__card"), pk=pk)
+    everything = request.GET.get("all") == "1"
+    basics = request.GET.get("basics") == "1"
+    style = "text" if request.GET.get("style") == "text" else "image"
+    label = request.GET.get("label", "1") == "1"
+    cards = []
+    order = {"commander": 0, "main": 1, "side": 2}
+    for e in sorted(deck.entries.all(), key=lambda e: (order.get(e.board, 3), e.card.name)):
+        c = e.card
+        if everything:
+            if c.is_basic_land and not basics:
+                continue
+            copies = e.quantity
+        else:
+            copies = min(e.proxies, e.quantity)
+        cards.extend([c] * copies)
+    pages = [cards[i:i + 9] for i in range(0, len(cards), 9)]
+    return render(request, "collection/proxies.html", {
+        "active_tab": "decks", "deck": deck, "pages": pages, "count": len(cards), "everything": everything,
+        "basics": basics, "style": style, "label": label,
+        "proxy_total": sum(min(e.proxies, e.quantity) for e in deck.entries.all()),
+    })

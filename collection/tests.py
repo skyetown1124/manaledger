@@ -218,9 +218,9 @@ class DeckViewTests(TestCase):
         self.client.post(url, {"quantity": 2, "board": "side"})
         entry.refresh_from_db()
         self.assertEqual(entry.board, "side")
-        self.client.post(url, {"quantity": 9, "board": "side"})  # capped at 3 owned
+        self.client.post(url, {"quantity": 9, "board": "side"})  # Modern allows 4; owning 3 doesn't cap it
         entry.refresh_from_db()
-        self.assertEqual(entry.quantity, 3)
+        self.assertEqual(entry.quantity, 4)
         self.client.post(url, {"quantity": 0})
         self.assertFalse(DeckCard.objects.filter(pk=entry.pk).exists())
 
@@ -1778,3 +1778,55 @@ class WantListTests(TestCase):
         with mock.patch.object(scryfall, "get_many", return_value=([], [])) as get_many:
             services.refresh_prices()
         self.assertIn("cmm-410", get_many.call_args[0][0])
+
+
+# ------------------------------------------------------------------ Proxies
+
+class ProxyTests(TestCase):
+    def setUp(self):
+        self.crypt = make_card("Mana Crypt", usd=150)
+        self.ring = make_card("Sol Ring", usd=1)
+        self.bolt = make_card("Lightning Bolt", type_line="Instant", usd=2)
+        self.deck = Deck.objects.create(name="Proxied", format="casual")
+        self.crypt_e = DeckCard.objects.create(deck=self.deck, card=self.crypt, quantity=1)
+        self.ring_e = DeckCard.objects.create(deck=self.deck, card=self.ring, quantity=1)
+        self.bolt_e = DeckCard.objects.create(deck=self.deck, card=self.bolt, quantity=4)
+        CollectionItem.objects.create(card=self.bolt, quantity=1)
+
+    def needs(self):
+        page = self.client.get(reverse("collection:deck", args=[self.deck.pk]))
+        return {n["name"]: n["need"] for n in page.context["stats"]["needs"]}
+
+    def test_proxies_come_off_the_needs(self):
+        self.assertEqual(self.needs(), {"Mana Crypt": 1, "Sol Ring": 1, "Lightning Bolt": 3})
+        url = reverse("collection:deck_entry_update", args=[self.crypt_e.pk])
+        self.client.post(url, {"quantity": 1, "board": "main", "proxy_form": "1", "proxy": "1"})
+        self.client.post(reverse("collection:deck_entry_update", args=[self.bolt_e.pk]),
+                         {"quantity": 4, "board": "main", "proxy_form": "1", "proxies": "2"})
+        self.assertEqual(self.needs(), {"Sol Ring": 1, "Lightning Bolt": 1})
+        page = self.client.get(reverse("collection:deck", args=[self.deck.pk]))
+        self.assertEqual(page.context["stats"]["proxy_count"], 3)
+        # Untick it again; saving an unowned card keeps it in the deck.
+        self.client.post(url, {"quantity": 1, "board": "main", "proxy_form": "1"})
+        self.crypt_e.refresh_from_db()
+        self.assertEqual(self.crypt_e.proxies, 0)
+
+    def test_proxy_buttons(self):
+        self.client.post(reverse("collection:deck_proxy", args=[self.deck.pk]), {"name": "Mana Crypt"})
+        self.assertEqual(self.needs(), {"Sol Ring": 1, "Lightning Bolt": 3})
+        self.client.post(reverse("collection:deck_proxy", args=[self.deck.pk]))
+        self.assertEqual(self.needs(), {})
+        self.bolt_e.refresh_from_db()
+        self.assertEqual(self.bolt_e.proxies, 3)  # you own one real Bolt
+        page = self.client.get(reverse("collection:deck", args=[self.deck.pk]))
+        self.assertContains(page, "You own or proxy every card")
+
+    def test_print_sheet(self):
+        self.client.post(reverse("collection:deck_proxy", args=[self.deck.pk]))
+        url = reverse("collection:deck_proxies", args=[self.deck.pk])
+        page = self.client.get(url + "?style=text")
+        self.assertEqual(page.context["count"], 5)      # Crypt, Ring, 3 Bolts
+        self.assertContains(page, 'class="proxy-card proxy-text"', count=5)
+        everything = self.client.get(url + "?all=1")
+        self.assertEqual(everything.context["count"], 6)
+        self.assertEqual(len(everything.context["pages"]), 1)

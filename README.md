@@ -173,6 +173,21 @@ Open http://127.0.0.1:8000/ and use **Add Cards** to search for your first card.
   the "value by day" chart, so the history grows the more often you refresh.
 - **Light mode** switches themes and remembers your choice in this browser.
 
+## Proxies
+
+Mark any card in a deck as a **proxy**, a stand-in you play instead of the
+real card. In the deck list, tick **Proxy** under a card (for several copies,
+set how many are proxies), or press **Proxy** next to a card in "Cards you
+need" (or **Proxy all of these**). Proxied copies come off "Cards you need",
+the shopping list and "Add these to my want list"; the deck shows how many
+proxies it has.
+
+**Print proxies** (deck list header) makes a printable sheet at real card size
+(63 × 88 mm), 9 to a page with cut lines: just the proxied cards or the whole
+deck, as card images or ink-saving text, optionally marked "Proxy". Print at
+100% scale. Proxies are for playtesting and casual games; they aren't allowed
+at sanctioned events.
+
 ## Want list
 
 The **Want List** tab keeps track of cards you want to buy.

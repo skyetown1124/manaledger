@@ -1,0 +1,52 @@
+{% extends "collection/base.html" %}
+{% block title %}Proxies · {{ deck.name }} · Mana Ledger{% endblock %}
+{% block heading %}Print proxies <span class="titlebar-sub">{{ deck.name }}</span>{% endblock %}
+
+{% block content %}
+<section class="panel no-print">
+  <form method="get" class="section-head filters proxy-options">
+    <span class="radios" role="radiogroup" aria-label="Which cards">
+      <label><input type="radio" name="all" value="0" {% if not everything %}checked{% endif %} onchange="this.form.submit()"> Cards marked as proxies ({{ proxy_total }})</label>
+      <label><input type="radio" name="all" value="1" {% if everything %}checked{% endif %} onchange="this.form.submit()"> The whole deck</label>
+    </span>
+    {% if everything %}<label class="check"><input type="checkbox" name="basics" value="1" {% if basics %}checked{% endif %} onchange="this.form.submit()"> Include basic lands</label>{% endif %}
+    <label for="proxy-style" class="small">Print</label>
+    <select id="proxy-style" name="style" class="compact" onchange="this.form.submit()">
+      <option value="image" {% if style == "image" %}selected{% endif %}>Card images</option>
+      <option value="text" {% if style == "text" %}selected{% endif %}>Text only (saves ink)</option>
+    </select>
+    <input type="hidden" name="label" value="0">
+    <label class="check"><input type="checkbox" name="label" value="1" {% if label %}checked{% endif %} onchange="this.form.submit()"> Mark "Proxy"</label>
+    <noscript><button type="submit" class="btn small">Show</button></noscript>
+    <span class="spacer"></span>
+    <button type="button" class="btn primary" onclick="window.print()" {% if not count %}disabled{% endif %}>Print {{ count }} card{{ count|pluralize }}</button>
+  </form>
+  <p class="note">Cards print at real size (63 × 88 mm), 9 to a page, with light cut lines. In the print dialog, set scale to 100% (not "fit to page") and turn off headers and footers. {% if style == "image" %}Double-faced cards print their front face.{% endif %}</p>
+  <p class="note">Proxies are for playtesting and casual games with friends who are fine with them. They aren't allowed at sanctioned events, and they're never real cards to sell or trade.</p>
+  {% if not count %}
+    <div class="message">{% if everything %}This deck has no cards to print.{% else %}No cards in {{ deck.name }} are marked as proxies yet. Tick "Proxy" on a card in the deck list, or press Proxy in "Cards you need". Or pick "The whole deck" above.{% endif %}</div>
+  {% endif %}
+</section>
+
+<div class="proxy-pages">
+  {% for page in pages %}
+    <div class="proxy-page">
+      {% for c in page %}
+        {% if style == "image" and c.image_url %}
+          <div class="proxy-card proxy-image"><img src="{{ c.image_url }}" alt="{{ c.name }}">{% if label %}<span class="proxy-mark">Proxy</span>{% endif %}</div>
+        {% else %}
+          <div class="proxy-card proxy-text">
+            <div class="pt-head"><strong>{{ c.name }}</strong><span class="pt-cost">{{ c.mana_cost }}</span></div>
+            <div class="pt-type">{{ c.type_line }}</div>
+            <div class="pt-body">{{ c.oracle_text|linebreaksbr }}</div>
+            <div class="pt-foot">
+              <span>{{ c.set_code|upper }} #{{ c.collector_number }}{% if label %} · Proxy{% endif %}</span>
+              {% if c.power or c.toughness %}<strong>{{ c.power }}/{{ c.toughness }}</strong>{% elif c.loyalty %}<strong>Loyalty {{ c.loyalty }}</strong>{% endif %}
+            </div>
+          </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}
