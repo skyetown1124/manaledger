@@ -1830,3 +1830,51 @@ class ProxyTests(TestCase):
         everything = self.client.get(url + "?all=1")
         self.assertEqual(everything.context["count"], 6)
         self.assertEqual(len(everything.context["pages"]), 1)
+
+
+# ------------------------------------------------------------------ Deck views (stacks / text / table) and covers
+
+class DeckViewModeTests(TestCase):
+    def setUp(self):
+        self.boss = make_card("Golgari Boss", type_line="Legendary Creature — Elf", color_identity="BG",
+                              image_url="https://cards.scryfall.io/normal/front/a/b/boss.jpg")
+        self.ring = make_card("Sol Ring", image_url="https://cards.scryfall.io/normal/front/c/d/ring.jpg", usd=2)
+        self.deck = Deck.objects.create(name="Views", format="commander")
+        DeckCard.objects.create(deck=self.deck, card=self.boss, board="commander")
+        self.ring_e = DeckCard.objects.create(deck=self.deck, card=self.ring, board="main")
+        self.url = reverse("collection:deck", args=[self.deck.pk])
+
+    def test_views_and_remembered_choice(self):
+        page = self.client.get(self.url)                       # default: stacks
+        self.assertContains(page, 'class="stk-card')
+        page = self.client.get(self.url + "?view=text")
+        self.assertContains(page, 'class="txt-row')
+        page = self.client.get(self.url)                       # remembered
+        self.assertContains(page, 'class="txt-row')
+        page = self.client.get(self.url + "?view=table")
+        self.assertContains(page, 'class="data deck-table"')
+        self.assertContains(self.client.get(self.url + "?view=bogus"), 'class="data deck-table"')
+
+    def test_stack_buttons_change_copies(self):
+        page = self.client.get(self.url + "?view=stacks")
+        self.assertContains(page, 'name="quantity" value="2"')  # the + button for Sol Ring
+        self.client.post(reverse("collection:deck_entry_update", args=[self.ring_e.pk]), {"quantity": "0"})
+        self.assertFalse(DeckCard.objects.filter(pk=self.ring_e.pk).exists())
+
+    def test_cover_defaults_to_commander_and_can_change(self):
+        decks = self.client.get(reverse("collection:decks"))
+        self.assertContains(decks, "/art_crop/front/a/b/boss.jpg")
+        self.client.post(reverse("collection:deck_cover", args=[self.deck.pk]), {"card_id": self.ring.pk})
+        self.deck.refresh_from_db()
+        self.assertEqual(self.deck.cover_card, self.ring)
+        self.assertContains(self.client.get(reverse("collection:decks")), "/art_crop/front/c/d/ring.jpg")
+        other = make_card("Not In Deck")
+        self.client.post(reverse("collection:deck_cover", args=[self.deck.pk]), {"card_id": other.pk})
+        self.deck.refresh_from_db()
+        self.assertIsNone(self.deck.cover_card)                 # not in the deck: back to the default
+
+    def test_tile_shows_colors_and_menu(self):
+        decks = self.client.get(reverse("collection:decks"))
+        self.assertContains(decks, "ad-color-b")
+        self.assertContains(decks, "ad-color-g")
+        self.assertContains(decks, "View as stacks")

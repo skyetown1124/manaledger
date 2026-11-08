@@ -1,0 +1,43 @@
+{% load money cards %}
+<div class="stk-cols">
+  {% for group in stats.groups %}
+    <section class="stk-group" aria-label="{{ group.label }}">
+      <header class="stk-head">
+        <div><strong>{% if group.label == "Commander" %}♛ {% endif %}{{ group.label }}</strong><span>Qty: {{ group.count }}</span></div>
+        <span>Price: {{ group.value|money }}</span>
+      </header>
+      <div class="stk-pile">
+        {% for e in group.entries %}
+          <div class="stk-card{% if not e.image_url %} noimg{% endif %}{% if not e.is_basic and e.owned|add:e.proxies < e.quantity %} need{% endif %}" tabindex="0">
+            {% if e.image_url %}<img src="{{ e.image_url }}" alt="{{ e.name }}" loading="lazy" onerror="this.closest('.stk-card').classList.add('noimg')">{% endif %}
+            <div class="stk-text" aria-hidden="{% if e.image_url %}true{% else %}false{% endif %}">
+              <div class="stk-text-head"><strong>{{ e.name }}</strong><span>{{ e.mana_cost|mana }}</span></div>
+              <div class="stk-text-type">{{ e.type_line }}</div>
+              <div class="stk-text-body">{{ e.oracle_text|linebreaksbr }}</div>
+              {% if e.power or e.toughness %}<div class="stk-text-pt">{{ e.power }}/{{ e.toughness }}</div>{% endif %}
+            </div>
+            <span class="stk-qty" title="{{ e.quantity }} in the deck">{{ e.quantity }}</span>
+            {% if e.proxies %}<span class="stk-tag proxy">Proxy</span>{% elif not e.is_basic and e.owned < e.quantity %}<span class="stk-tag need" title="You own {{ e.owned }} of {{ e.quantity }}">Need</span>{% endif %}
+            <div class="stk-tools">
+              <form method="post" action="{% url 'collection:deck_entry_update' e.id %}">
+                {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><input type="hidden" name="quantity" value="{{ e.quantity|add:1 }}">
+                <button type="submit" title="One more" aria-label="Add a copy of {{ e.name }}">+</button>
+              </form>
+              <form method="post" action="{% url 'collection:deck_entry_update' e.id %}">
+                {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><input type="hidden" name="quantity" value="{{ e.quantity|add:-1 }}">
+                <button type="submit" title="{% if e.quantity == 1 %}Remove{% else %}One fewer{% endif %}" aria-label="{% if e.quantity == 1 %}Remove {{ e.name }}{% else %}Remove a copy of {{ e.name }}{% endif %}">−</button>
+              </form>
+              <form method="post" action="{% url 'collection:deck_cover' deck.pk %}">
+                {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><input type="hidden" name="card_id" value="{{ e.card_id }}">
+                <button type="submit" title="Use as deck cover" aria-label="Use {{ e.name }} as the deck cover">★</button>
+              </form>
+              <a href="{% url 'collection:card' e.card_id %}" title="Card details, rulings and prices" aria-label="Details for {{ e.name }}">i</a>
+            </div>
+            {% if e.price %}<span class="stk-price">{{ e.price|money }}</span>{% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+  {% endfor %}
+</div>
+<p class="note">Hover a card (or tab to it) to see all of it and its buttons: <strong>+</strong> / <strong>−</strong> change copies, <strong>★</strong> makes it the deck cover, <strong>i</strong> opens its details. "Need" marks cards you don't own enough of. Switch to <a href="?view=table">Table</a> to move cards between sections or mark proxies.</p>

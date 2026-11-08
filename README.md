@@ -173,6 +173,30 @@ Open http://127.0.0.1:8000/ and use **Add Cards** to search for your first card.
   the "value by day" chart, so the history grows the more often you refresh.
 - **Light mode** switches themes and remembers your choice in this browser.
 
+## Deck views
+
+The **Decks** tab shows each deck as a tile like Archidekt's: the cover art
+(the commander by default), a color bar for the deck's colors, card count,
+value and when it was last changed, the format and bracket, and a ⋮ menu with
+shortcuts (stacks, text, table, playtest, suggestions, proxies). The footer
+says whether the deck is ready, has rules to fix, needs cards, or plays above
+its bracket.
+
+On a deck page, switch the deck list between three views (the app remembers
+your choice):
+
+- **Stacks**: card images in overlapping piles by type, with each pile's count
+  and price. Hover a card (or tab to it) to see all of it, with **+** / **−**
+  to change copies, **★** to make it the deck's cover, and **i** for details.
+  Cards you don't own enough of are marked "Need".
+- **Text**: columns of card names and mana costs by type. Hover a card to see
+  it in the preview on the right; click it to keep it there and change copies,
+  remove it, or make it the cover.
+- **Table**: the editing view, for moving cards between sections and marking
+  proxies.
+
+Pick a specific cover under **Deck settings**, or with ★ in the stacks view.
+
 ## Proxies
 
 Mark any card in a deck as a **proxy**, a stand-in you play instead of the

@@ -487,7 +487,8 @@ def deck_list(request):
     for deck in Deck.objects.prefetch_related("entries__card"):
         entries = _deck_entries(deck, owned, by_name)
         stats = deckrules.analyze(deck.format, entries)
-        summaries.append({"deck": deck, "stats": stats, "bracket": _bracket(deck, entries, stats)})
+        summaries.append({"deck": deck, "stats": stats, "bracket": _bracket(deck, entries, stats),
+                          "cover": _deck_cover(deck, entries)})
     return render(request, "collection/decks.html", {
         "active_tab": "decks", "summaries": summaries, "formats": Deck.FORMAT_CHOICES,
         "library_size": len(owned),
@@ -512,12 +513,36 @@ def deck_create(request):
     return redirect("collection:deck", pk=deck.pk)
 
 
+DECK_VIEWS = [("stacks", "Stacks"), ("text", "Text"), ("table", "Table")]
+
+
+def _deck_cover(deck, entries):
+    """The card shown as the deck's cover: the one you picked, else the commander,
+    else the most valuable nonland card. Returns an entry-like dict or None."""
+    by_id = {e["card_id"]: e for e in entries}
+    if deck.cover_card_id and deck.cover_card_id in by_id:
+        return by_id[deck.cover_card_id]
+    if deck.cover_card_id:  # picked a card that's no longer in the deck: still show it
+        c = deck.cover_card
+        return {"card_id": c.id, "name": c.name, "image_url": c.image_url}
+    commanders = [e for e in entries if e["board"] == "commander" and e.get("image_url")]
+    if commanders:
+        return commanders[0]
+    pool = [e for e in entries if e.get("image_url") and "Land" not in (e["type_line"] or "")]
+    return max(pool, key=lambda e: (e["price"] or 0), default=None)
+
+
 def deck_detail(request, pk):
-    deck = get_object_or_404(Deck.objects.prefetch_related("entries__card"), pk=pk)
+    deck = get_object_or_404(Deck.objects.select_related("cover_card").prefetch_related("entries__card"), pk=pk)
     owned = _owned_counts()
     entries = _deck_entries(deck, owned, _owned_by_name())
     stats = deckrules.analyze(deck.format, entries)
     bracket = _bracket(deck, entries, stats)
+    view = request.GET.get("view")
+    if view in dict(DECK_VIEWS):
+        request.session["deck_view"] = view
+    else:
+        view = request.session.get("deck_view", "stacks")
 
     # Other decks that use the same cards (you can share a card between decks).
     elsewhere = {}
@@ -571,6 +596,8 @@ def deck_detail(request, pk):
         "bracket": bracket, "bracket_choices": Deck.BRACKET_CHOICES,
         "bracket_names": brackets.BRACKET_NAMES,
         "buy_list": deckrules.buy_list_text(stats["needs"]),
+        "view": view, "deck_views": DECK_VIEWS, "cover": _deck_cover(deck, entries),
+        "cover_choices": sorted({(e["card_id"], e["name"]) for e in entries if e.get("image_url")}, key=lambda x: x[1]),
         "spellbook_tag_name": brackets.SPELLBOOK_TAG_NAMES.get((deck.spellbook_result or {}).get("bracketTag"), ""),
         "spellbook_bracket": brackets.SPELLBOOK_TAGS.get((deck.spellbook_result or {}).get("bracketTag")),
     })
@@ -1450,3 +1477,19 @@ def deck_proxies(request, pk):
         "basics": basics, "style": style, "label": label,
         "proxy_total": sum(min(e.proxies, e.quantity) for e in deck.entries.all()),
     })
+
+
+
+@require_POST
+def deck_cover(request, pk):
+    """Pick the card whose art is the deck's cover (blank: back to the default)."""
+    deck = get_object_or_404(Deck, pk=pk)
+    card_id = request.POST.get("card_id", "")
+    if card_id and deck.entries.filter(card_id=card_id).exists():
+        deck.cover_card_id = int(card_id)
+        messages.success(request, f"{deck.cover_card.name} is now the cover of {deck.name}.")
+    else:
+        deck.cover_card = None
+        messages.success(request, f"{deck.name} uses its commander (or most valuable card) as the cover.")
+    deck.save(update_fields=["cover_card"])
+    return _back(request, reverse("collection:deck", args=[deck.pk]))

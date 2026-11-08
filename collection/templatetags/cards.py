@@ -85,3 +85,18 @@ def rule_text(text, terms=None):
         return f'{m.group(2)}<a href="{reverse("collection:rule", args=[m.group(3)])}">{m.group(3)}</a>'
 
     return mark_safe(_RULE_REF.sub(link, safe).replace("\n", "<br>"))
+
+
+@register.filter
+def art_crop(url):
+    """Scryfall image URL -> the art-only crop of the same card (for deck covers)."""
+    if url and "/normal/" in url:
+        return url.replace("/normal/", "/art_crop/", 1)
+    return url or ""
+
+
+@register.filter
+def color_list(letters):
+    """'BG' -> ['b', 'g'] in WUBRG order; '' -> ['c'] (colorless)."""
+    found = [c.lower() for c in "WUBRG" if c in (letters or "")]
+    return found or ["c"]

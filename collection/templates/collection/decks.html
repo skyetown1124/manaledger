@@ -32,35 +32,43 @@
 </section>
 
 {% if summaries %}
-  <section class="deck-grid">
+  <section class="ad-grid">
     {% for s in summaries %}
-      <a class="deck-tile {% if s.stats.issues %}needs-work{% else %}ready{% endif %}" href="{% url 'collection:deck' s.deck.pk %}">
-        <div class="deck-tile-top">
-          <span class="kpi-label">{{ s.deck.get_format_display }}</span>
-          <span class="pips">{{ s.stats.identity|pips }}</span>
+      <article class="ad-tile">
+        <a class="ad-cover" href="{% url 'collection:deck' s.deck.pk %}" aria-label="Open {{ s.deck.name }}"
+           {% if s.cover.image_url %}style="background-image: url('{{ s.cover.image_url|art_crop }}')"{% endif %}>
+          {% if not s.cover.image_url %}<span class="ad-cover-empty">{{ s.deck.name|slice:":1"|upper }}</span>{% endif %}
+          <span class="ad-meta">{{ s.stats.deck_count }}{% if s.stats.target %} / {{ s.stats.target }}{% endif %} cards · {{ s.stats.value|money }} · {{ s.deck.updated_at|timesince|cut:","|truncatewords:2|cut:" …" }} ago</span>
+        </a>
+        <div class="ad-colors" aria-label="Colors">
+          {% for c in s.stats.identity|color_list %}<span class="ad-color ad-color-{{ c }}" title="{{ c|upper }}"><span class="ad-sym">{{ c|upper }}</span></span>{% endfor %}
         </div>
-        <div class="deck-tile-name">{{ s.deck.name }}</div>
-        <div class="deck-tile-stats">
-          <span><strong>{{ s.stats.deck_count }}</strong>{% if s.stats.target %} / {{ s.stats.target }}{% endif %} cards</span>
-          <span><strong>{{ s.stats.value|money }}</strong></span>
-        </div>
-        {% if s.stats.need_copies %}<div class="deck-tile-needs">{{ s.stats.need_copies }} card{{ s.stats.need_copies|pluralize }} to buy{% if s.stats.need_cost %} · {{ s.stats.need_cost|money }}{% endif %}</div>{% endif %}
-        {% if s.bracket %}
-          <div class="deck-tile-bracket{% if s.bracket.plays_above %} over{% endif %}">
-            Bracket {{ s.bracket.bracket }} · {{ s.bracket.name }}
-            {% if s.bracket.plays_above %}<span class="small">(meant for {{ s.bracket.intended }})</span>{% endif %}
-            <span class="small muted">· impact {{ s.bracket.impact_score }}</span>
+        <div class="ad-body">
+          <div class="ad-avatar" aria-hidden="true">{% if s.cover.image_url %}<img src="{{ s.cover.image_url|art_crop }}" alt="" loading="lazy">{% else %}<span>{{ s.deck.get_format_display|slice:":1" }}</span>{% endif %}</div>
+          <div class="ad-text">
+            <a class="ad-name" href="{% url 'collection:deck' s.deck.pk %}">{{ s.deck.name }}</a>
+            <div class="ad-sub">{{ s.deck.get_format_display }}{% if s.bracket %} · Bracket: {{ s.bracket.name }} ({{ s.bracket.bracket }}){% endif %}</div>
+            {% if s.cover %}<div class="ad-owner">{{ s.cover.name }}</div>{% endif %}
           </div>
-        {% endif %}
-        <div class="deck-tile-status">
-          {% if s.stats.issues %}
-            <span class="status warn">{{ s.stats.issues }} thing{{ s.stats.issues|pluralize }} to fix</span>
-          {% else %}
-            <span class="status good">Ready to play</span>
-          {% endif %}
-          <span class="muted small">Updated {{ s.deck.updated_at|date:"M j" }}</span>
+          <details class="ad-menu">
+            <summary aria-label="More for {{ s.deck.name }}">⋮</summary>
+            <div class="ad-menu-list">
+              <a href="{% url 'collection:deck' s.deck.pk %}?view=stacks">View as stacks</a>
+              <a href="{% url 'collection:deck' s.deck.pk %}?view=text">View as text</a>
+              <a href="{% url 'collection:deck' s.deck.pk %}?view=table">Edit as table</a>
+              {% if s.stats.deck_count %}<a href="{% url 'collection:deck_playtest' s.deck.pk %}">Playtest</a>{% endif %}
+              <a href="{% url 'collection:deck_suggestions' s.deck.pk %}">Suggestions</a>
+              <a href="{% url 'collection:deck_proxies' s.deck.pk %}?all=1">Print proxies</a>
+            </div>
+          </details>
         </div>
-      </a>
+        <div class="ad-foot">
+          {% if s.bracket and s.bracket.plays_above %}<span class="ad-flag down">Plays like Bracket {{ s.bracket.bracket }} (meant for {{ s.bracket.intended }})</span>
+          {% elif s.stats.issues %}<span class="ad-flag warn">{{ s.stats.issues }} thing{{ s.stats.issues|pluralize }} to fix</span>
+          {% elif s.stats.need_copies %}<span class="ad-flag">{{ s.stats.need_copies }} card{{ s.stats.need_copies|pluralize }} to buy{% if s.stats.need_cost %} · {{ s.stats.need_cost|money }}{% endif %}</span>
+          {% else %}<span class="ad-flag good">Ready to play</span>{% endif %}
+        </div>
+      </article>
     {% endfor %}
   </section>
 {% else %}

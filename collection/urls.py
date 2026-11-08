@@ -32,6 +32,7 @@ urlpatterns = [
     path("decks/<int:pk>/import/", views.deck_import, name="deck_import"),
     path("decks/<int:pk>/suggestions/", views.deck_suggestions, name="deck_suggestions"),
     path("decks/<int:pk>/cut/", views.deck_cut, name="deck_cut"),
+    path("decks/<int:pk>/cover/", views.deck_cover, name="deck_cover"),
     path("decks/<int:pk>/collect/", views.deck_collect_needed, name="deck_collect_needed"),
     path("decks/<int:pk>/want/", views.deck_want_needed, name="deck_want_needed"),
     path("decks/<int:pk>/proxy/", views.deck_proxy, name="deck_proxy"),

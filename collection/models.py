@@ -142,6 +142,8 @@ class Deck(models.Model):
         help_text="The Commander bracket you mean this deck for. The app flags it if the deck plays higher.")
     spellbook_result = models.JSONField(null=True, blank=True, help_text="Last Commander Spellbook bracket check.")
     spellbook_checked_at = models.DateTimeField(null=True, blank=True)
+    cover_card = models.ForeignKey("Card", on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+                                   help_text="The card whose art is the deck's cover (default: the commander).")
     source = models.CharField(max_length=20, blank=True, help_text="Where the list came from: 'archidekt', 'precon' or blank")
     source_id = models.CharField(max_length=200, blank=True, help_text="The deck's id there")
     source_url = models.URLField(max_length=500, blank=True)

@@ -265,6 +265,7 @@ def analyze(fmt, entries):
     if by_board["commander"]:
         groups.append({"label": "Commander", "count": commander_count,
                        "entries": sorted(by_board["commander"], key=lambda e: e["name"])})
+
     typed = defaultdict(list)
     for e in by_board["main"]:
         typed[deck_type(e["type_line"])].append(e)
@@ -275,6 +276,9 @@ def analyze(fmt, entries):
     if by_board["side"]:
         groups.append({"label": "Sideboard", "count": side_count,
                        "entries": sorted(by_board["side"], key=lambda e: e["name"])})
+
+    for g in groups:
+        g["value"] = round(sum((e["price"] or 0) * e["quantity"] for e in g["entries"]), 2)
 
     # ----- Mana curve (non-land cards you play) -----
     curve = [0] * len(CURVE_LABELS)
