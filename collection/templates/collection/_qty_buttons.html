@@ -1,0 +1,11 @@
+<span class="qty-step">
+  <form method="post" action="{% url 'collection:deck_entry_update' e.id %}">
+    {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><input type="hidden" name="quantity" value="{{ e.quantity|add:-1 }}">
+    <button type="submit" class="step-btn" title="{% if e.quantity == 1 %}Remove from the deck{% else %}One fewer{% endif %}" aria-label="{% if e.quantity == 1 %}Remove {{ e.name }}{% else %}One fewer {{ e.name }}{% endif %}">−</button>
+  </form>
+  {% if show_qty %}<span class="step-qty">{{ e.quantity }}</span>{% endif %}
+  <form method="post" action="{% url 'collection:deck_entry_update' e.id %}">
+    {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><input type="hidden" name="quantity" value="{{ e.quantity|add:1 }}">
+    <button type="submit" class="step-btn" title="One more" aria-label="One more {{ e.name }}" {% if e.limit and e.quantity >= e.limit %}disabled{% endif %}>+</button>
+  </form>
+</span>

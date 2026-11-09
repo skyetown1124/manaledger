@@ -2037,3 +2037,21 @@ class DeckTrimTests(TestCase):
         page = self.client.get(reverse("collection:deck", args=[self.deck.pk]) + "?view=table")
         self.assertContains(page, 'name="keep"', count=4)
         self.assertContains(page, "Remove unticked cards")
+
+
+class DeckViewControlsTests(TestCase):
+    def test_every_view_has_plus_minus_and_keep(self):
+        deck = Deck.objects.create(name="Controls", format="casual")
+        ring = DeckCard.objects.create(deck=deck, card=make_card("Sol Ring"), quantity=1)
+        DeckCard.objects.create(deck=deck, card=make_card("Lightning Bolt", type_line="Instant"), quantity=2)
+        url = reverse("collection:deck", args=[deck.pk])
+        for view in ("stacks", "text", "table"):
+            page = self.client.get(url + f"?view={view}")
+            self.assertContains(page, 'name="keep"', count=2, msg_prefix=view)
+            self.assertContains(page, 'name="shown"', count=2, msg_prefix=view)
+            self.assertContains(page, "Remove unticked cards", msg_prefix=view)
+            self.assertContains(page, 'name="quantity" value="3"', msg_prefix=view)   # + for the Bolts
+            self.assertContains(page, 'name="quantity" value="0"', msg_prefix=view)   # − for the Ring removes it
+        # a − press on a single copy takes the card out
+        self.client.post(reverse("collection:deck_entry_update", args=[ring.pk]), {"quantity": "0"})
+        self.assertFalse(DeckCard.objects.filter(pk=ring.pk).exists())

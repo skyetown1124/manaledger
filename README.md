@@ -213,6 +213,11 @@ your choice):
   then press **Remove unticked cards**. Unticked boxes are remembered in your
   browser until you remove them, and a version is saved first so you can undo it.
 
+Every view has **−** / **+** next to each card to change the number of copies
+(− on the last copy removes the card; + is greyed out at the format's limit), and
+the same **Keep** boxes and bottom bar, so you can trim the deck from whichever
+view you like.
+
 **Show changes.** Tick **Show changes** above the deck list to see what's
 different from an earlier version, in any view: cards added are marked **New**,
 changed counts show **+1** / **−1**, cards moved between the main deck and

@@ -12,8 +12,10 @@
             <li class="txt-row{% if e.change %} chg-row chg-row-{{ e.change.status }}{% endif %}{% if not e.is_basic and e.owned|add:e.proxies < e.quantity %} need{% endif %}" tabindex="0"
                 data-name="{{ e.name }}" data-img="{{ e.image_url }}" data-type="{{ e.type_line }}" data-price="{{ e.price|money }}"
                 data-qty="{{ e.quantity }}" data-owned="{% if e.is_basic %}Basic land{% else %}You own {{ e.owned }}{% endif %}{% if e.proxies %} · {{ e.proxies }} prox{{ e.proxies|pluralize:'y,ies' }}{% endif %}"
-                data-card="{% url 'collection:card' e.card_id %}" data-update="{% url 'collection:deck_entry_update' e.id %}" data-card-id="{{ e.card_id }}">
-              <span class="txt-name">{{ e.quantity }} {{ e.name }}</span>{% include "collection/_change_badge.html" %}
+                data-card="{% url 'collection:card' e.card_id %}" data-update="{% url 'collection:deck_entry_update' e.id %}" data-card-id="{{ e.card_id }}" data-board="{{ e.board }}">
+              {% include "collection/_keep_box.html" %}
+              {% include "collection/_qty_buttons.html" with show_qty=True %}
+              <span class="txt-name">{{ e.name }}</span>{% include "collection/_change_badge.html" %}
               <span class="txt-cost">{{ e.mana_cost|mana }}</span>
             </li>
           {% endfor %}
@@ -63,12 +65,13 @@
     rows.forEach(function (row) {
       row.addEventListener("mouseenter", function () { if (!pinned) show(row); });
       row.addEventListener("focus", function () { show(row); });
-      row.addEventListener("click", function () {   // click pins a card so you can use its buttons
+      row.addEventListener("click", function (ev) {   // click pins a card so you can use its buttons
+        if (ev.target.closest("button, input, label, form")) return;
         if (pinned) pinned.classList.remove("pinned");
         pinned = pinned === row ? null : row;
         if (pinned) { pinned.classList.add("pinned"); show(row); }
       });
-      row.addEventListener("keydown", function (ev) { if (ev.key === "Enter") row.click(); });
+      row.addEventListener("keydown", function (ev) { if (ev.key === "Enter" && ev.target === row) row.click(); });
     });
     if (rows.length) show(rows[0]);
   })();

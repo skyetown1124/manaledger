@@ -893,3 +893,32 @@ td.actions form + details, td.actions details + form { margin-top: 4px; }
 .deck-table td.keep-cell { width: 40px; padding-left: 2px; padding-right: 2px; }
 .keep-check span { font-size: 10px; }
 .deck-table .qty-cell .qty { width: 54px; }
+
+/* ---- +/- buttons and Keep in every view ---- */
+.qty-step { display: inline-flex; align-items: center; gap: 2px; }
+.qty-step form { margin: 0; }
+.step-btn { width: 24px; height: 24px; display: grid; place-items: center; padding: 0; border-radius: 5px; border: 1px solid var(--line);
+  background: var(--chip-bg); color: var(--text); font: 700 15px/1 var(--font); cursor: pointer; }
+.step-btn:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); color: #fff; }
+.step-btn:disabled { opacity: .35; cursor: not-allowed; }
+.step-qty { min-width: 18px; text-align: center; font-weight: 700; font-size: 13px; }
+.deck-table .qty-cell { white-space: nowrap; }
+.deck-table .qty-cell .qty-step { display: flex; justify-content: center; gap: 4px; margin-bottom: 4px; }
+.deck-table .qty-cell .step-btn { width: 26px; }
+.txt-row { gap: 6px; }
+.txt-row .keep-check { flex-direction: row; gap: 0; }
+.txt-row .keep-check span { display: none; }
+.txt-row .keep-check input { width: 15px; height: 15px; }
+.txt-row .txt-name { flex: 1; min-width: 0; }
+.txt-row .step-btn { width: 20px; height: 20px; font-size: 13px; }
+.txt-row.cut .txt-name { text-decoration: line-through; opacity: .5; }
+.txt-row.cut .txt-cost, .txt-row.cut .qty-step { opacity: .45; }
+.stk-keep { position: absolute; left: 30px; top: 1px; z-index: 3; }
+.stk-keep .keep-check { flex-direction: row; gap: 3px; padding: 1px 5px; border-radius: 4px; background: rgba(20,22,28,.85); color: #ddd; }
+.stk-keep .keep-check input { width: 13px; height: 13px; }
+.stk-keep .keep-check span { font-size: 10px; }
+.stk-card.cut img, .stk-card.cut .stk-text { opacity: .35; filter: grayscale(.8); }
+.stk-card.cut .stk-keep .keep-check { background: var(--down); color: #fff; }
+.txt-cols { columns: 285px; }
+.stk-keep .keep-check span { display: none; }
+.stk-keep .keep-check { padding: 2px 3px; }

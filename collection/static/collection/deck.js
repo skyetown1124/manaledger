@@ -144,7 +144,7 @@
   function update() {
     let total = 0, kept = 0, cutCards = 0, cutCopies = 0;
     boxes.forEach(function (b) {
-      const row = b.closest("tr");
+      const row = b.closest("[data-qty]");
       const qty = parseInt(row.dataset.qty, 10) || 0;
       if (row.dataset.board !== "side") total += qty;
       if (b.checked) { if (row.dataset.board !== "side") kept += qty; }
