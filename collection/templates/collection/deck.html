@@ -471,9 +471,9 @@
       <textarea id="deck-notes" name="description" rows="3" placeholder="Strategy, upgrades to buy, who it's for">{{ deck.description }}</textarea>
       <div><button type="submit" class="btn primary">Save settings</button></div>
     </form>
-    <form method="post" action="{% url 'collection:deck_delete' deck.pk %}" class="danger-zone">
+    <form method="post" action="{% url 'collection:deck_delete' deck.pk %}" class="danger-zone" id="deck-settings">
       {% csrf_token %}
-      <label class="check" for="confirm-delete"><input type="checkbox" id="confirm-delete" name="confirm" value="yes" required> Delete this deck (your cards stay in your library)</label>
+      <label class="check" for="confirm-delete"><input type="checkbox" id="confirm-delete" name="confirm" value="yes" required> Delete this deck (your cards stay in your library; you can put it back from Recently deleted on the Decks page)</label>
       <button type="submit" class="btn ghost">Delete deck</button>
     </form>
   </div>

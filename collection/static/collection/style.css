@@ -935,3 +935,23 @@ td.actions form + details, td.actions details + form { margin-top: 4px; }
   .deck-layout .library-panel { position: static; max-height: none; overflow: visible; }
   .add-cards-jump { display: inline-flex; }
 }
+
+/* Deleting decks: ⋮ menu item, select mode, Recently deleted */
+.ad-menu-list a.ad-menu-danger { color: var(--down); border-top: 1px solid var(--line); margin-top: 4px; padding-top: 9px; border-radius: 0 0 4px 4px; }
+.ad-select-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 12px; }
+.ad-select-tools { display: none; align-items: center; gap: 10px; flex-wrap: wrap; }
+body.selecting-decks .ad-select-tools { display: inline-flex; }
+.ad-select-bar [data-select-toggle][aria-pressed="true"] { background: var(--chip-bg); }
+.ad-tile { position: relative; }
+.ad-pick { display: none; position: absolute; top: 8px; left: 8px; z-index: 5; background: rgba(0,0,0,.65); border-radius: 4px; padding: 4px 6px; line-height: 0; cursor: pointer; }
+.ad-pick input { width: 20px; height: 20px; margin: 0; cursor: pointer; accent-color: var(--down); }
+body.selecting-decks .ad-pick { display: block; }
+body.selecting-decks .ad-cover { cursor: pointer; }
+.ad-tile.picked { outline: 2px solid var(--down); outline-offset: 2px; }
+.deleted-list { list-style: none; margin: 0; padding: 0; }
+.deleted-list li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 10px 0; border-top: 1px solid var(--line); }
+.deleted-actions { display: inline-flex; gap: 8px; }
+.deleted-actions form { margin: 0; }
+.confirm-dialog { width: min(460px, calc(100vw - 32px)); }
+.confirm-dialog p { margin: 0; line-height: 1.5; }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }

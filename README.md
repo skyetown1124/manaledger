@@ -100,7 +100,13 @@ Open http://127.0.0.1:8000/ and use **Add Cards** to search for your first card.
   right side of the deck page and add cards. The library panel sits beside
   the deck list in every view (Stacks, Text and Table) and stays in view as
   you scroll; on a phone it moves below the list, and **＋ Add cards** jumps
-  to it. Cards you don't own enough of are marked "Need". Two
+  to it. Cards you don't own enough of are marked "Need".
+- **Deleting decks**: use **Delete deck…** in a deck tile's ⋮ menu, or press
+  **Select decks** on the Decks page, tick several (click the tiles) and press
+  **Delete**. You're always asked to confirm. Your cards stay in your library,
+  and deleted decks go to **Recently deleted** at the bottom of the Decks page
+  for 30 days, where **Put back** restores the deck with its cards, saved
+  versions and want-list links. Two
   other ways to fill a deck, covered in "Deck lists and precons" below: paste
   a list from Moxfield, Archidekt, Arena or EDHREC, or build an official
   precon. The deck page shows:

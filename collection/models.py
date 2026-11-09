@@ -347,3 +347,19 @@ class DeckVersion(models.Model):
 
     def __str__(self):
         return f"{self.deck.name} @ {self.created_at:%Y-%m-%d %H:%M}"
+
+
+class DeletedDeck(models.Model):
+    """A deleted deck, kept for a while so it can be put back ("Recently deleted")."""
+
+    name = models.CharField(max_length=100)
+    format = models.CharField(max_length=20, choices=Deck.FORMAT_CHOICES, default="commander")
+    size = models.PositiveIntegerField(default=0)
+    data = models.JSONField(default=dict, help_text="The deck's settings, card list, versions and want-list links")
+    deleted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-deleted_at", "-id"]
+
+    def __str__(self):
+        return f"{self.name} (deleted {self.deleted_at:%Y-%m-%d})"

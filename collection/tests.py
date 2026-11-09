@@ -11,7 +11,7 @@ import tempfile
 from django.core.management import call_command
 
 from . import decks, importer, scryfall, search
-from .models import Card, CollectionItem, Deck, DeckCard, DeckVersion, LinkedProfile, WantItem
+from .models import Card, CollectionItem, Deck, DeckCard, DeckVersion, DeletedDeck, LinkedProfile, WantItem
 
 LEGAL_ALL = {f: "legal" for f in ("commander", "standard", "pioneer", "modern", "legacy", "vintage", "pauper")}
 
@@ -2068,3 +2068,81 @@ class DeckAlphabeticalTests(TestCase):
             self.assertEqual(names, sorted(names, key=str.casefold), group["label"])
         instants = next(g for g in page.context["stats"]["groups"] if g["label"] == "Instants")
         self.assertEqual([e["name"] for e in instants["entries"]], ["ancestral recall", "Bolt", "Zap"])
+
+
+class DeckDeleteTests(TestCase):
+    def setUp(self):
+        self.ring = make_card("Sol Ring", type_line="Artifact")
+        self.bolt = make_card("Lightning Bolt", type_line="Instant")
+        CollectionItem.objects.create(card=self.ring, quantity=1)
+        self.deck = Deck.objects.create(name="Burn", format="modern", description="Go face", cover_card=self.bolt,
+                                        source="archidekt", source_id="123", source_url="https://archidekt.com/decks/123")
+        DeckCard.objects.create(deck=self.deck, card=self.bolt, quantity=4)
+        DeckCard.objects.create(deck=self.deck, card=self.ring, quantity=1, board="side", proxies=1)
+        from . import versions
+        versions.snapshot(self.deck, label="Before the tournament")
+        self.want = WantItem.objects.create(card=self.bolt, quantity=2, deck=self.deck)
+        self.other = Deck.objects.create(name="Other", format="casual")
+
+    def test_delete_keeps_a_copy_and_put_back_restores_everything(self):
+        self.client.post(reverse("collection:deck_delete", args=[self.deck.pk]), {"confirm": "yes"})
+        self.assertFalse(Deck.objects.filter(name="Burn").exists())
+        gone = DeletedDeck.objects.get()
+        self.assertEqual((gone.name, gone.size), ("Burn", 4))
+        page = self.client.get(reverse("collection:decks"))
+        self.assertContains(page, "Recently deleted")
+        self.assertContains(page, "Put back")
+        self.want.refresh_from_db()
+        self.assertIsNone(self.want.deck)  # the want stays, unlinked
+
+        resp = self.client.post(reverse("collection:deck_undelete", args=[gone.pk]))
+        deck = Deck.objects.get(name="Burn")
+        self.assertRedirects(resp, reverse("collection:deck", args=[deck.pk]))
+        self.assertEqual((deck.format, deck.description, deck.cover_card, deck.source_id), ("modern", "Go face", self.bolt, "123"))
+        side = deck.entries.get(board="side")
+        self.assertEqual((side.card, side.quantity, side.proxies), (self.ring, 1, 1))
+        self.assertEqual(deck.entries.get(board="main").quantity, 4)
+        self.assertEqual(list(deck.versions.values_list("label", flat=True)), ["Before the tournament"])
+        self.want.refresh_from_db()
+        self.assertEqual(self.want.deck, deck)
+        self.assertFalse(DeletedDeck.objects.exists())
+
+    def test_delete_several_needs_confirmation(self):
+        url = reverse("collection:deck_delete_many")
+        self.client.post(url, {"deck": [self.deck.pk, self.other.pk]})
+        self.assertEqual(Deck.objects.count(), 2)
+        resp = self.client.post(url, {"deck": [self.deck.pk, self.other.pk], "confirm": "yes"}, follow=True)
+        self.assertEqual(Deck.objects.count(), 0)
+        self.assertEqual(DeletedDeck.objects.count(), 2)
+        self.assertContains(resp, "Deleted 2 decks")
+        self.assertTrue(CollectionItem.objects.filter(card=self.ring).exists())
+
+    def test_delete_for_good_and_old_ones_are_cleared(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from . import trash
+        gone = trash.delete_deck(self.deck)
+        purge = reverse("collection:deck_purge", args=[gone.pk])
+        self.client.post(purge)
+        self.assertTrue(DeletedDeck.objects.filter(pk=gone.pk).exists())
+        self.client.post(purge, {"confirm": "yes"})
+        self.assertFalse(DeletedDeck.objects.filter(pk=gone.pk).exists())
+
+        old = trash.delete_deck(self.other)
+        DeletedDeck.objects.filter(pk=old.pk).update(deleted_at=timezone.now() - timedelta(days=trash.KEEP_DAYS + 1))
+        trash.purge()
+        self.assertFalse(DeletedDeck.objects.exists())
+
+    def test_put_back_skips_cards_no_longer_known(self):
+        from . import trash
+        gone = trash.delete_deck(self.deck)
+        self.ring.delete()
+        deck, skipped = trash.restore(gone)
+        self.assertEqual(skipped, 1)
+        self.assertEqual(list(deck.entries.values_list("card__name", flat=True)), ["Lightning Bolt"])
+
+    def test_decks_page_has_delete_controls(self):
+        page = self.client.get(reverse("collection:decks"))
+        self.assertContains(page, "Delete deck…")
+        self.assertContains(page, "Select decks")
+        self.assertContains(page, reverse("collection:deck_delete", args=[self.deck.pk]))

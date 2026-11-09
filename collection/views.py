@@ -14,8 +14,8 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from . import decks as deckrules
-from . import archidekt, backup, brackets, importer, suggest, versions, ocr, precons, rules, scryfall, search, services, spellbook
-from .models import (Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, DeckVersion, GlossaryTerm, LinkedProfile, Precon, PriceSnapshot, WantItem,
+from . import archidekt, backup, brackets, importer, suggest, versions, ocr, precons, rules, scryfall, search, services, spellbook, trash
+from .models import (Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, DeckVersion, DeletedDeck, GlossaryTerm, LinkedProfile, Precon, PriceSnapshot, WantItem,
                      Rule, RulesEdition)
 from .stats import build_dashboard
 
@@ -491,7 +491,7 @@ def deck_list(request):
                           "cover": _deck_cover(deck, entries)})
     return render(request, "collection/decks.html", {
         "active_tab": "decks", "summaries": summaries, "formats": Deck.FORMAT_CHOICES,
-        "library_size": len(owned),
+        "library_size": len(owned), "deleted": DeletedDeck.objects.all(), "keep_days": trash.KEEP_DAYS,
     })
 
 
@@ -815,10 +815,52 @@ def deck_delete(request, pk):
     if request.POST.get("confirm") != "yes":
         messages.error(request, "Tick the box to confirm, then press Delete deck.")
         return redirect("collection:deck", pk=deck.pk)
-    name = deck.name
-    deck.delete()
-    messages.success(request, f"Deleted {name}. The cards are still in your library.")
-    return redirect("collection:decks")
+    gone = trash.delete_deck(deck)
+    messages.success(request, f"Deleted {gone.name}. Your cards are still in your library, and you can put the "
+                              f"deck back from Recently deleted for {trash.KEEP_DAYS} days.")
+    return redirect(reverse("collection:decks") + "#recently-deleted")
+
+
+@require_POST
+def deck_delete_many(request):
+    """Delete the decks ticked on the Decks page."""
+    ids = [i for i in request.POST.getlist("deck") if i.isdigit()]
+    decks = list(Deck.objects.filter(pk__in=ids))
+    if not decks:
+        messages.error(request, "Tick at least one deck to delete.")
+        return redirect("collection:decks")
+    if request.POST.get("confirm") != "yes":
+        messages.error(request, "Confirm the delete first.")
+        return redirect("collection:decks")
+    names = [trash.delete_deck(d).name for d in decks]
+    shown = ", ".join(names[:5]) + (f" and {len(names) - 5} more" if len(names) > 5 else "")
+    messages.success(request, f"Deleted {len(names)} deck{'s' if len(names) != 1 else ''}: {shown}. "
+                              f"You can put them back from Recently deleted for {trash.KEEP_DAYS} days.")
+    return redirect(reverse("collection:decks") + "#recently-deleted")
+
+
+@require_POST
+def deck_undelete(request, pk):
+    gone = get_object_or_404(DeletedDeck, pk=pk)
+    deck, skipped = trash.restore(gone)
+    msg = f"Put {deck.name} back."
+    if skipped:
+        msg += f" {skipped} card(s) are no longer in the app's card list and were skipped."
+    messages.success(request, msg)
+    return redirect("collection:deck", pk=deck.pk)
+
+
+@require_POST
+def deck_purge(request, pk):
+    """Delete a deck from Recently deleted for good."""
+    gone = get_object_or_404(DeletedDeck, pk=pk)
+    if request.POST.get("confirm") != "yes":
+        messages.error(request, "Confirm first: this can't be undone.")
+        return redirect(reverse("collection:decks") + "#recently-deleted")
+    name = gone.name
+    gone.delete()
+    messages.success(request, f"{name} is gone for good.")
+    return redirect(reverse("collection:decks") + "#recently-deleted")
 
 
 # ------------------------------------------------------------------ Rules and rulings

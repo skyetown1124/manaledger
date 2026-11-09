@@ -1,5 +1,5 @@
 {% extends "collection/base.html" %}
-{% load money cards %}
+{% load money cards assets %}
 {% block title %}Decks · Mana Ledger{% endblock %}
 {% block heading %}My Decks{% endblock %}
 
@@ -32,9 +32,20 @@
 </section>
 
 {% if summaries %}
+  <form id="bulk-delete" class="ad-select-bar" method="post" action="{% url 'collection:deck_delete_many' %}">
+    {% csrf_token %}
+    <input type="hidden" name="confirm" value="">
+    <button type="button" class="btn small" data-select-toggle aria-pressed="false">Select decks</button>
+    <span class="ad-select-tools">
+      <span class="small muted" data-select-count>0 selected</span>
+      <button type="button" class="btn small" data-select-all>Select all</button>
+      <button type="submit" class="btn small danger" data-delete-selected disabled>Delete selected</button>
+    </span>
+  </form>
   <section class="ad-grid">
     {% for s in summaries %}
-      <article class="ad-tile">
+      <article class="ad-tile" data-deck="{{ s.deck.pk }}">
+        <label class="ad-pick"><input type="checkbox" name="deck" value="{{ s.deck.pk }}" form="bulk-delete" aria-label="Select {{ s.deck.name }}"></label>
         <a class="ad-cover" href="{% url 'collection:deck' s.deck.pk %}" aria-label="Open {{ s.deck.name }}"
            {% if s.cover.image_url %}style="background-image: url('{{ s.cover.image_url|art_crop }}')"{% endif %}>
           {% if not s.cover.image_url %}<span class="ad-cover-empty">{{ s.deck.name|slice:":1"|upper }}</span>{% endif %}
@@ -59,6 +70,8 @@
               {% if s.stats.deck_count %}<a href="{% url 'collection:deck_playtest' s.deck.pk %}">Playtest</a>{% endif %}
               <a href="{% url 'collection:deck_suggestions' s.deck.pk %}">Suggestions</a>
               <a href="{% url 'collection:deck_proxies' s.deck.pk %}?all=1">Print proxies</a>
+              <a class="ad-menu-danger" href="{% url 'collection:deck' s.deck.pk %}#deck-settings"
+                 data-delete-url="{% url 'collection:deck_delete' s.deck.pk %}" data-deck-name="{{ s.deck.name }}">Delete deck…</a>
             </div>
           </details>
         </div>
@@ -77,4 +90,41 @@
     <p>Name a deck and pick a format above. You'll then search your library and add cards to it, with the format's rules checked as you go.</p>
   </section>
 {% endif %}
+
+{% if deleted %}
+  <section class="panel" id="recently-deleted">
+    <h2>Recently deleted</h2>
+    <p class="note">Deleted decks stay here for {{ keep_days }} days, then they're cleared. Putting one back restores its cards, saved versions and want-list links.</p>
+    <ul class="deleted-list">
+      {% for d in deleted %}
+        <li>
+          <span><strong>{{ d.name }}</strong> <span class="small muted">{{ d.get_format_display }} · {{ d.size }} card{{ d.size|pluralize }} · deleted {{ d.deleted_at|timesince|cut:","|truncatewords:2|cut:" …" }} ago</span></span>
+          <span class="deleted-actions">
+            <form method="post" action="{% url 'collection:deck_undelete' d.pk %}">{% csrf_token %}<button type="submit" class="btn small primary">Put back</button></form>
+            <form method="post" action="{% url 'collection:deck_purge' d.pk %}" data-confirm="Delete {{ d.name }} for good? This can't be undone.">
+              {% csrf_token %}<input type="hidden" name="confirm" value="">
+              <button type="submit" class="btn small ghost">Delete for good</button>
+            </form>
+          </span>
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+{% endif %}
+
+<dialog class="pt-dialog confirm-dialog" id="confirm-dialog" aria-labelledby="confirm-title">
+  <form method="dialog" class="pt-dialog-inner">
+    <h3 id="confirm-title">Delete deck?</h3>
+    <p data-confirm-text></p>
+    <div class="confirm-actions">
+      <button type="submit" value="cancel" class="btn" autofocus>Cancel</button>
+      <button type="submit" value="ok" class="btn danger" data-confirm-ok>Delete</button>
+    </div>
+  </form>
+</dialog>
+<form id="single-delete" method="post" hidden>{% csrf_token %}<input type="hidden" name="confirm" value="yes"></form>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{% asset 'collection/decks.js' %}"></script>
 {% endblock %}
