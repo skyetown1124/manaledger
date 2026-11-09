@@ -2216,7 +2216,13 @@ class EdhrecTests(TestCase):
             {"name": "Arcane Signet", "id": "abc-signet", "sanitized": "arcane-signet", "synergy": 0.02, "num_decks": 800, "potential_decks": 1000}]},
         {"header": "High Synergy Cards", "tag": "highsynergycards", "cardviews": [
             {"name": "Gray Merchant of Asphodel", "id": "abc-gary", "sanitized": "gray-merchant-of-asphodel", "synergy": 0.6, "num_decks": 400, "potential_decks": 1000},
-            {"name": "Sol Ring", "id": "abc-ring", "synergy": 0.01, "num_decks": 900, "potential_decks": 1000}]},
+            {"name": "Sol Ring", "id": "abc-ring", "synergy": 0.01, "num_decks": 900, "potential_decks": 1000},
+            {"name": "Command Tower", "id": "abc-tower", "synergy": 0, "num_decks": 950, "potential_decks": 1000}]},
+        {"header": "Utility Lands", "tag": "utilitylands", "cardviews": [
+            {"name": "Command Tower", "id": "abc-tower", "synergy": 0, "num_decks": 950, "potential_decks": 1000},
+            {"name": "Bojuka Bog", "id": "abc-bog", "synergy": 0.3, "num_decks": 500, "potential_decks": 1000}]},
+        {"header": "Creatures", "tag": "creatures", "cardviews": [
+            {"name": "Urborg, Tomb of Yawgmoth", "id": "abc-urborg", "synergy": 0.2, "num_decks": 450, "potential_decks": 1000}]},
     ]}}}
 
     def setUp(self):
@@ -2225,6 +2231,7 @@ class EdhrecTests(TestCase):
         self.sheoldred = make_card("Sheoldred, the Apocalypse", type_line="Legendary Creature — Phyrexian Praetor", color_identity="B")
         self.ring = make_card("Sol Ring")
         self.signet = make_card("Arcane Signet")
+        make_card("Urborg, Tomb of Yawgmoth", type_line="Legendary Land")
         CollectionItem.objects.create(card=self.ring, quantity=1)
         CollectionItem.objects.create(card=self.signet, quantity=2)
         self.deck = Deck.objects.create(name="Sheo", format="commander")
@@ -2244,9 +2251,11 @@ class EdhrecTests(TestCase):
         get.assert_called_once()
         self.assertIn("sheoldred-the-apocalypse", get.call_args[0][0])
         cards = page.context["edh"]["cards"]
-        self.assertEqual([c["name"] for c in cards], ["Sol Ring", "Arcane Signet", "Gray Merchant of Asphodel"])
-        self.assertEqual(cards[0]["inclusion"], 90)
-        self.assertContains(page, "✓ In this deck")
+        # Sol Ring is in the deck; Command Tower and Bojuka Bog are in EDHREC's land lists;
+        # Urborg is a land the app knows from its card data.
+        self.assertEqual([c["name"] for c in cards], ["Arcane Signet", "Gray Merchant of Asphodel"])
+        self.assertEqual(cards[0]["inclusion"], 80)
+        self.assertNotContains(page, "✓ In this deck")
         self.assertContains(page, "In your collection (2)")
         self.assertContains(page, "Not in your collection")
         self.assertContains(page, "Add to deck")

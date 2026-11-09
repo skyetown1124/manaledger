@@ -1,7 +1,7 @@
 {% load money cards %}
 <section class="panel" id="edhrec">
   <div class="section-head">
-    <span>EDHREC top 20 for {{ edh.commanders|join:" + " }}</span>
+    <span>EDHREC top 20 not in this deck · {{ edh.commanders|join:" + " }}</span>
     <span class="spacer"></span>
     <nav class="view-switch" aria-label="Rank by">
       {% for value, label in edh.sorts.items %}<a href="?edh={{ value }}#edhrec" class="{% if value == edh.sort %}active{% endif %}" {% if value == edh.sort %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
@@ -12,8 +12,9 @@
     <div class="message error">{{ edh.error }}</div>
   {% else %}
     <p class="note">
-      {% if edh.sort == "synergy" %}The cards EDHREC says are most tied to this commander: played here far more than in other decks of its colors.{% else %}The cards played in the most {{ edh.commanders|join:" + " }} decks on EDHREC{% if edh.num_decks %} ({{ edh.num_decks|floatformat:"0g" }} decks){% endif %}.{% endif %}
-      You have <strong>{{ edh.owned_count }}</strong> of these in your collection and <strong>{{ edh.in_deck_count }}</strong> in this deck.
+      {% if edh.sort == "synergy" %}The cards EDHREC says are most tied to this commander, played here far more than in other decks of its colors,{% else %}The cards played in the most {{ edh.commanders|join:" + " }} decks on EDHREC{% if edh.num_decks %} ({{ edh.num_decks|floatformat:"0g" }} decks){% endif %},{% endif %}
+      that aren't in this deck yet. Lands are left out.
+      You have <strong>{{ edh.owned_count }}</strong> of these in your collection already.
       <span class="muted">Updated {{ edh.fetched_at|timesince|cut:","|truncatewords:2|cut:" …" }} ago · <a href="?edh={{ edh.sort }}&amp;edh_refresh=1#edhrec">refresh</a></span>
     </p>
     <ol class="edh-grid">

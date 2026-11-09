@@ -1382,14 +1382,18 @@ def _edhrec_block(request, deck, entries):
     owned_ids = {}
     for card_id, name in Card.objects.filter(items__isnull=False).values_list("id", "name").order_by("-id"):
         owned_ids.setdefault(name, card_id)
-    others = [c for c in page.cards if c["name"] not in commanders]
+    # Only cards that aren't in the deck yet, and no lands (EDHREC's land lists, or a land we know of).
+    known_lands = set(Card.objects.filter(name__in=[c["name"] for c in page.cards], type_line__icontains="land")
+                      .exclude(type_line__icontains="//").values_list("name", flat=True))
+    others = [c for c in page.cards
+              if c["name"] not in in_deck and not c.get("is_land") and c["name"] not in known_lands]
+    block["skipped_in_deck"] = sum(1 for c in page.cards if c["name"] in in_deck)
     for c in edhrec.top(others, 20, sort):
         c["in_deck"] = in_deck.get(c["name"])
         c["owned"] = owned_by_name.get(c["name"], 0)
         c["owned_card_id"] = owned_ids.get(c["name"])
         block["cards"].append(c)
     block["owned_count"] = sum(1 for c in block["cards"] if c["owned"])
-    block["in_deck_count"] = sum(1 for c in block["cards"] if c["in_deck"])
     return block
 
 

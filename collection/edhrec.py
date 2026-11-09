@@ -62,22 +62,28 @@ def _get(url):
 def parse(data):
     """Card rows from an EDHREC commander page: one per card name (first list it appears in)."""
     lists = ((data or {}).get("container") or {}).get("json_dict", {}).get("cardlists") or []
-    cards, seen = [], set()
+    cards, seen = [], {}
     for cardlist in lists:
         header = cardlist.get("header", "")
-        if cardlist.get("tag") == "newcards":
+        tag = cardlist.get("tag", "")
+        if tag == "newcards":
             continue  # recent printings: not enough decks yet to rank fairly
+        land_list = "land" in f"{tag} {header}".lower()  # "Lands", "Utility Lands", ...
         for c in cardlist.get("cardviews") or []:
             name = c.get("name")
-            if not name or name in seen or name in BASICS:
+            if not name or name in BASICS:
                 continue  # basic lands aren't worth a top-20 spot
-            seen.add(name)
-            cards.append({
+            if name in seen:
+                seen[name]["is_land"] = seen[name]["is_land"] or land_list
+                continue
+            seen[name] = {
                 "name": name, "scryfall_id": c.get("id") or "", "image_version": c.get("image_version") or "",
                 "sanitized": c.get("sanitized") or _clean(name),
                 "synergy": float(c.get("synergy") or 0), "num_decks": int(c.get("num_decks") or 0),
                 "potential_decks": int(c.get("potential_decks") or 0), "list": header,
-            })
+                "is_land": land_list,
+            }
+            cards.append(seen[name])
     return cards
 
 
@@ -91,7 +97,8 @@ def page(commander_names, refresh=False):
     if not key:
         raise EdhrecError("Add a commander to the deck first.")
     saved = EdhrecPage.objects.filter(slug=key).first()
-    if saved and not refresh and timezone.now() - saved.fetched_at < MAX_AGE:
+    current = saved and saved.cards and "is_land" in saved.cards[0]  # saved before lands were marked
+    if saved and current and not refresh and timezone.now() - saved.fetched_at < MAX_AGE:
         return saved
     try:
         data = _get(JSON_URL.format(slug=key))
