@@ -2055,3 +2055,16 @@ class DeckViewControlsTests(TestCase):
         # a − press on a single copy takes the card out
         self.client.post(reverse("collection:deck_entry_update", args=[ring.pk]), {"quantity": "0"})
         self.assertFalse(DeckCard.objects.filter(pk=ring.pk).exists())
+
+
+class DeckAlphabeticalTests(TestCase):
+    def test_sections_list_cards_a_to_z(self):
+        deck = Deck.objects.create(name="Abc", format="casual")
+        for name, cmc in (("Zap", 1), ("ancestral recall", 1), ("Bolt", 1), ("Atog", 2), ("Mox", 0)):
+            DeckCard.objects.create(deck=deck, card=make_card(name, type_line="Instant" if cmc == 1 else "Artifact", cmc=cmc))
+        page = self.client.get(reverse("collection:deck", args=[deck.pk]))
+        for group in page.context["stats"]["groups"]:
+            names = [e["name"] for e in group["entries"]]
+            self.assertEqual(names, sorted(names, key=str.casefold), group["label"])
+        instants = next(g for g in page.context["stats"]["groups"] if g["label"] == "Instants")
+        self.assertEqual([e["name"] for e in instants["entries"]], ["ancestral recall", "Bolt", "Zap"])

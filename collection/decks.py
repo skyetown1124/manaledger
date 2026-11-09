@@ -248,6 +248,11 @@ def _names(items, limit=6):
     return shown + (f" and {len(items) - limit} more" if len(items) > limit else "")
 
 
+def _alpha(entry):
+    """A to Z by card name, ignoring capitals; same names (other printings) by set."""
+    return (entry["name"].casefold(), entry.get("set_code") or "")
+
+
 def analyze(fmt, entries):
     rules = FORMAT_RULES.get(fmt, FORMAT_RULES["casual"])
     by_board = defaultdict(list)
@@ -264,18 +269,18 @@ def analyze(fmt, entries):
     groups = []
     if by_board["commander"]:
         groups.append({"label": "Commander", "count": commander_count,
-                       "entries": sorted(by_board["commander"], key=lambda e: e["name"])})
+                       "entries": sorted(by_board["commander"], key=_alpha)})
 
     typed = defaultdict(list)
     for e in by_board["main"]:
         typed[deck_type(e["type_line"])].append(e)
     for key, label in TYPE_GROUPS:
         if typed[key]:
-            rows = sorted(typed[key], key=lambda e: (e["cmc"], e["name"]))
+            rows = sorted(typed[key], key=_alpha)
             groups.append({"label": label, "count": sum(e["quantity"] for e in rows), "entries": rows})
     if by_board["side"]:
         groups.append({"label": "Sideboard", "count": side_count,
-                       "entries": sorted(by_board["side"], key=lambda e: e["name"])})
+                       "entries": sorted(by_board["side"], key=_alpha)})
 
     for g in groups:
         g["value"] = round(sum((e["price"] or 0) * e["quantity"] for e in g["entries"]), 2)
