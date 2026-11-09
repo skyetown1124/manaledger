@@ -68,3 +68,57 @@
     });
   });
 })();
+
+// Library search on the deck page: results update as you type, without reloading the page.
+(function () {
+  const form = document.getElementById("library-search");
+  const box = document.getElementById("library-results");
+  if (!form || !box) return;
+  const input = form.querySelector('input[name="q"]');
+  const status = document.getElementById("library-status");
+  let timer = null;
+  let controller = null;
+
+  function query() {
+    const data = new FormData(form);
+    // A ticked "fits" box is sent after its hidden 0; keep the last value only.
+    const params = new URLSearchParams();
+    for (const [k, v] of data.entries()) params.set(k, v);
+    return params;
+  }
+
+  async function search() {
+    const params = query();
+    const pageUrl = location.pathname + "?" + params.toString() + "#library";
+    params.set("partial", "library");
+    if (controller) controller.abort();
+    controller = new AbortController();
+    if (status) status.textContent = "Searching…";
+    try {
+      const resp = await fetch(location.pathname + "?" + params.toString(), {
+        headers: { "X-Requested-With": "fetch" }, signal: controller.signal, credentials: "same-origin",
+      });
+      if (!resp.ok) throw new Error(resp.status);
+      box.innerHTML = await resp.text();
+      history.replaceState(null, "", pageUrl);
+      if (status) status.textContent = "";
+    } catch (e) {
+      if (e.name === "AbortError") return;
+      if (status) status.textContent = "Couldn't search; press Search to try again.";
+    }
+  }
+
+  input.addEventListener("input", function () {
+    clearTimeout(timer);
+    timer = setTimeout(search, 250);
+  });
+  form.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    clearTimeout(timer);
+    search();
+  });
+  form.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
+    cb.removeAttribute("onchange");
+    cb.addEventListener("change", search);
+  });
+})();

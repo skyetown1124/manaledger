@@ -45,3 +45,26 @@
     });
   }
 })();
+
+// Keep your place: after a button that saves something (Add, Save, +, Remove...), the page
+// reloads; put it back where you were scrolled instead of at the top.
+(function () {
+  const KEY = "manaledger.scroll";
+  document.addEventListener("submit", function (ev) {
+    const form = ev.target;
+    if ((form.method || "").toLowerCase() !== "post" || form.target) return;
+    try {
+      sessionStorage.setItem(KEY, JSON.stringify({ path: location.pathname, y: window.scrollY, t: Date.now() }));
+    } catch (e) { /* storage blocked: the page just starts at the top */ }
+  }, true);
+  let saved = null;
+  try {
+    saved = JSON.parse(sessionStorage.getItem(KEY) || "null");
+    sessionStorage.removeItem(KEY);
+  } catch (e) { saved = null; }
+  if (!saved || saved.path !== location.pathname || Date.now() - saved.t > 15000 || location.hash) return;
+  if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+  const restore = function () { window.scrollTo(0, saved.y); };
+  restore();
+  window.addEventListener("load", restore);   // again once images have their size
+})();

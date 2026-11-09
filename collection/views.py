@@ -597,7 +597,14 @@ def deck_detail(request, pk):
         })
 
     boards = _boards(deck)
-    return render(request, "collection/deck.html", {
+    # Where the library's Add buttons come back to: this page (without the live-search
+    # flag), and the browser restores the scroll position.
+    params = request.GET.copy()
+    params.pop("partial", None)
+    library_back = request.path + (f"?{params.urlencode()}" if params else "")
+    template = "collection/_library_results.html" if request.GET.get("partial") == "library" else "collection/deck.html"
+    return render(request, template, {
+        "library_back": library_back,
         "active_tab": "decks", "deck": deck, "stats": stats, "boards": boards,
         "default_board": "commander" if deck.format == "commander" and not has_commander else "main",
         "formats": Deck.FORMAT_CHOICES, "q": q, "search": found, "results": results,

@@ -1988,3 +1988,18 @@ class DeckVersionPrintingTests(TestCase):
         entries = _deck_entries(Deck.objects.prefetch_related("entries__card").get(pk=deck.pk))
         d = versions.diff(entries, v)
         self.assertEqual(list(d["by_entry"].values()), [{"status": "more", "delta": 1, "was": 2}])
+
+
+class LibraryLiveSearchTests(TestCase):
+    def test_partial_returns_only_results_and_add_returns_to_the_page(self):
+        bolt = make_card("Lightning Bolt", type_line="Instant")
+        CollectionItem.objects.create(card=bolt, quantity=4)
+        deck = Deck.objects.create(name="Live", format="casual")
+        url = reverse("collection:deck", args=[deck.pk])
+        part = self.client.get(url + "?view=table&q=bolt&partial=library")
+        html = part.content.decode()
+        self.assertIn("Lightning Bolt", html)
+        self.assertNotIn("<html", html)                  # just the results, not the whole page
+        self.assertIn(f'name="next" value="{url}?view=table&amp;q=bolt"', html)   # no partial flag in the way back
+        full = self.client.get(url + "?view=table&q=bolt")
+        self.assertContains(full, 'id="library-results"')

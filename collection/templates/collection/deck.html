@@ -242,11 +242,12 @@
   </div>
 
   <!-- Library search -->
-  <div class="panel library-panel">
-    <div class="section-head"><span>Add from your library</span></div>
-    <form class="search-row" method="get" role="search">
+  <div class="panel library-panel" id="library">
+    <div class="section-head"><span>Add from your library</span><span class="spacer"></span><span class="small muted" id="library-status" role="status"></span></div>
+    <form class="search-row" method="get" role="search" id="library-search" action="#library">
+      <input type="hidden" name="view" value="{{ view }}">
       <label class="sr" for="lib-q">Search your library</label>
-      <input type="search" id="lib-q" name="q" value="{{ q }}" placeholder='e.g. o:"draw a card" mv<=3'>
+      <input type="search" id="lib-q" name="q" value="{{ q }}" placeholder='Type a card name, or e.g. o:"draw a card" mv<=3' autocomplete="off">
       <button type="submit" class="btn primary">Search</button>
       {% if can_fit %}
         {# The hidden 0 comes first so a ticked box (sent after it) wins. #}
@@ -258,58 +259,9 @@
       {% endif %}
     </form>
     {% include "collection/_search_help.html" %}
-    {% if search.descriptions or fit %}
-      <div class="chips">
-        {% for d in search.descriptions %}<span class="chip">{{ d }}</span>{% endfor %}
-        {% if fit %}<span class="chip">fits your commander's colors</span>{% endif %}
-      </div>
-    {% endif %}
-    {% for err in search.errors %}<div class="message error">{{ err }}</div>{% endfor %}
-
-    <p class="note">{{ matches }} card{{ matches|pluralize }} in your library match{{ matches|pluralize:"es," }}{% if matches > results|length %}; showing the first {{ results|length }}. Search to narrow it down{% endif %}.</p>
-    <ul class="library-list">
-      {% for r in results %}
-        <li class="{% if r.blocked or r.max_add == 0 %}used-up{% endif %}">
-          <div class="lib-card">
-            <div class="card-name">
-              <a href="{% url 'collection:card' r.card.pk %}">{{ r.card.name }}</a>
-              {{ r.card.mana_cost|mana }}
-            </div>
-            <div class="muted small">{{ r.card.type_line }} · {{ r.card.set_code|upper }}</div>
-            {% if search.highlight and r.card.oracle_text %}
-              <p class="lib-text">{{ r.card.oracle_text|highlight:search.highlight }}</p>
-            {% endif %}
-          </div>
-          <div class="lib-add">
-            {% if r.blocked %}
-              <span class="small {% if 'Banned' in r.blocked or 'Not legal' in r.blocked or 'Outside' in r.blocked %}down{% else %}muted{% endif %}">{{ r.blocked }}</span>
-            {% elif r.max_add != 0 %}
-              <span class="small {% if r.used %}muted{% endif %}">{% if r.limit == 1 %}Singleton · {% endif %}{{ r.free }} of {{ r.owned }} free</span>
-              <form method="post" action="{% url 'collection:deck_add' deck.pk %}">
-                {% csrf_token %}
-                <input type="hidden" name="card_id" value="{{ r.card.pk }}">
-                <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                {% if r.max_add == 1 %}
-                  <input type="hidden" name="quantity" value="1">
-                {% else %}
-                  <label class="sr" for="add-qty-{{ r.card.pk }}">Copies</label>
-                  <input type="number" name="quantity" id="add-qty-{{ r.card.pk }}" value="1" min="1" {% if r.max_add %}max="{{ r.max_add }}"{% endif %} class="qty">
-                {% endif %}
-                <label class="sr" for="add-board-{{ r.card.pk }}">Section</label>
-                <select name="board" id="add-board-{{ r.card.pk }}" class="compact">
-                  {% for value, label in boards %}<option value="{{ value }}" {% if value == default_board %}selected{% endif %}>{{ label }}</option>{% endfor %}
-                </select>
-                <button type="submit" class="btn primary small">Add</button>
-              </form>
-            {% else %}
-              <span class="small muted">All {{ r.owned }} in this deck</span>
-            {% endif %}
-          </div>
-        </li>
-      {% empty %}
-        <li class="muted">No cards in your library match. {% if fit %}Try unticking the color filter.{% endif %}</li>
-      {% endfor %}
-    </ul>
+    <div id="library-results" aria-live="polite">
+      {% include "collection/_library_results.html" %}
+    </div>
   </div>
 </section>
 
