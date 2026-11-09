@@ -97,8 +97,10 @@ Open http://127.0.0.1:8000/ and use **Add Cards** to search for your first card.
   the card. Open "Card text" under a card to read it; search terms are
   highlighted.
 - **Decks**: create a deck, pick a format, then search your library on the
-  right side of the deck page and add cards. Cards added from your library
-  can only use as many copies as you own (basic lands are unlimited). Two
+  right side of the deck page and add cards. The library panel sits beside
+  the deck list in every view (Stacks, Text and Table) and stays in view as
+  you scroll; on a phone it moves below the list, and **＋ Add cards** jumps
+  to it. Cards you don't own enough of are marked "Need". Two
   other ways to fill a deck, covered in "Deck lists and precons" below: paste
   a list from Moxfield, Archidekt, Arena or EDHREC, or build an official
   precon. The deck page shows:

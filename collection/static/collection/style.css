@@ -779,8 +779,15 @@ td.actions form + details, td.actions details + form { margin-top: 4px; }
 .view-switch a:last-child { border-right: 0; }
 .view-switch a:hover { color: var(--text); background: var(--chip-bg); }
 .view-switch a.active { background: var(--accent); color: #fff; }
-.deck-layout.view-stacks, .deck-layout.view-text { grid-template-columns: minmax(0, 1fr); }
-.deck-layout.view-stacks .library-panel, .deck-layout.view-text .library-panel { max-width: none; }
+/* Library beside the deck list in every view; it stays in view while you scroll. */
+.page:has(.deck-layout) { max-width: 1560px; }
+.deck-layout.view-stacks, .deck-layout.view-text { grid-template-columns: minmax(0, 1fr) minmax(320px, 380px); }
+.deck-layout .library-panel { align-self: start; position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow: auto; overscroll-behavior: contain; }
+.deck-layout.view-stacks .library-list li, .deck-layout.view-text .library-list li { flex-direction: column; align-items: stretch; gap: 6px; }
+.deck-layout.view-stacks .lib-add, .deck-layout.view-text .lib-add { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; justify-content: space-between; }
+.deck-layout.view-text .txt-layout { grid-template-columns: minmax(0, 1fr) 220px; }
+.deck-layout.view-text .txt-cols { columns: 260px; }
+.add-cards-jump { display: none; }
 
 .stk-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 8px; padding: 6px 10px; margin-bottom: 8px;
   background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; font-size: 12px; color: var(--muted); }
@@ -922,3 +929,9 @@ td.actions form + details, td.actions details + form { margin-top: 4px; }
 .txt-cols { columns: 285px; }
 .stk-keep .keep-check span { display: none; }
 .stk-keep .keep-check { padding: 2px 3px; }
+
+@media (max-width: 900px) {
+  .deck-layout.view-stacks, .deck-layout.view-text { grid-template-columns: minmax(0, 1fr); }
+  .deck-layout .library-panel { position: static; max-height: none; overflow: visible; }
+  .add-cards-jump { display: inline-flex; }
+}
