@@ -1,0 +1,39 @@
+{% load money cards %}
+{% if fit %}<div class="chips"><span class="chip">fits your commander's colors</span></div>{% endif %}
+{% if all_error %}<div class="message error">{{ all_error }}</div>{% endif %}
+{% if q|length < 2 %}
+  <p class="note">Type a card name to search every Magic card (from Scryfall). Add the card to your collection, and to this deck too if you like.</p>
+{% else %}
+  <p class="note">{% if all_results %}{{ all_results|length }} card{{ all_results|length|pluralize }} from Scryfall{% if all_results.0.name|lower == q|lower %} · every printing of {{ all_results.0.name }}{% endif %}.{% elif not all_error %}No cards match "{{ q }}".{% endif %}</p>
+  <ul class="library-list lib-all">
+    {% for r in all_results %}
+      <li>
+        <div class="lib-card">
+          {% if r.image_url %}<img class="lib-thumb" src="{{ r.image_url }}" alt="" loading="lazy">{% endif %}
+          <div>
+            <div class="card-name">{{ r.name }} {{ r.mana_cost|mana }}</div>
+            <div class="muted small">{{ r.type_line }} · {{ r.set_code|upper }} #{{ r.collector_number }}{% if r.released_at %} · {{ r.released_at|date:"Y" }}{% endif %}</div>
+            <div class="small">{% for f in r.finish_options %}{% if not forloop.first %} · {% endif %}{{ f.label }} {{ f.price|money }}{% endfor %}</div>
+            <div class="small {% if r.owned_any %}up{% else %}muted{% endif %}">{% if r.owned_printing %}You own {{ r.owned_printing }} of this printing{% if r.owned_any > r.owned_printing %} ({{ r.owned_any }} in all){% endif %}{% elif r.owned_any %}You own {{ r.owned_any }} (other printings){% else %}Not in your collection{% endif %}</div>
+          </div>
+        </div>
+        <form method="post" action="{% url 'collection:deck_library_collect' deck.pk %}" class="lib-add lib-collect">
+          {% csrf_token %}
+          <input type="hidden" name="scryfall_id" value="{{ r.scryfall_id }}">
+          <input type="hidden" name="next" value="{{ library_back }}">
+          <input type="hidden" name="board" value="{{ default_board }}">
+          <span class="lib-collect-row">
+            <input type="number" name="quantity" value="1" min="1" max="999" class="qty" aria-label="Copies of {{ r.name }}">
+            <select name="finish" class="compact" aria-label="Finish">
+              {% for f in r.finish_options %}<option value="{{ f.value }}">{{ f.label }}</option>{% endfor %}
+            </select>
+          </span>
+          <span class="lib-collect-row">
+            <button type="submit" class="btn small">Add to collection</button>
+            <button type="submit" class="btn primary small" name="also_deck" value="1" title="Add to your collection and put it in this deck">+ deck too</button>
+          </span>
+        </form>
+      </li>
+    {% endfor %}
+  </ul>
+{% endif %}

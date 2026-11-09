@@ -1,4 +1,7 @@
 {% load money cards %}
+{% if source == "all" %}
+  {% include "collection/_library_all.html" %}
+{% else %}
     {% if search.descriptions or fit %}
       <div class="chips">
         {% for d in search.descriptions %}<span class="chip">{{ d }}</span>{% endfor %}
@@ -7,7 +10,8 @@
     {% endif %}
     {% for err in search.errors %}<div class="message error">{{ err }}</div>{% endfor %}
 
-    <p class="note">{{ matches }} card{{ matches|pluralize }} in your library match{{ matches|pluralize:"es," }}{% if matches > results|length %}; showing the first {{ results|length }}. Search to narrow it down{% endif %}.</p>
+    <p class="note">{{ matches }} card{{ matches|pluralize }} in your library match{{ matches|pluralize:"es," }}{% if matches > results|length %}; showing the first {{ results|length }}. Search to narrow it down{% endif %}.
+      {% if q %}<a href="?{% if view %}view={{ view }}&amp;{% endif %}src=all&amp;q={{ q|urlencode }}{% if not fit %}&amp;fit=0{% endif %}#library" data-src-all>Not here? Search all cards for "{{ q }}"</a> and add it to your collection.{% else %}Got a card that isn't in your library? Pick <strong>All cards</strong> above to add it to your collection.{% endif %}</p>
     <ul class="library-list">
       {% for r in results %}
         <li class="{% if r.blocked or r.max_add == 0 %}used-up{% endif %}">
@@ -51,3 +55,4 @@
         <li class="muted">No cards in your library match. {% if fit %}Try unticking the color filter.{% endif %}</li>
       {% endfor %}
     </ul>
+{% endif %}

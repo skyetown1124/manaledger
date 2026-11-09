@@ -101,12 +101,13 @@ Open http://127.0.0.1:8000/ and use **Add Cards** to search for your first card.
   the deck list in every view (Stacks, Text and Table) and stays in view as
   you scroll; on a phone it moves below the list, and **＋ Add cards** jumps
   to it. Cards you don't own enough of are marked "Need".
-- **Adding deck cards to your collection**: got a card for a deck? Add it to
-  your collection straight from the deck list: **Add to collection** under the
-  card in Table view (pick how many and the finish), the **✓** button on a card
-  in Stacks view, the **Got … Add to collection** box beside the card preview in
-  Text view, or **Got N** in "Cards you need". It fills in the copies you're
-  short (or 1), and takes them off your want list if the card is on it.
+- **Adding new cards to your collection from a deck**: in the deck page's
+  **Add cards** panel, switch from **Your library** to **All cards** and search
+  any Magic card (from Scryfall; a full card name lists every printing). Pick
+  how many and the finish, then **Add to collection**, or **+ deck too** to put
+  it in the deck as well. If your library search finds nothing, the "Not here?"
+  link switches to All cards for you. Want-list entries for the card are
+  reduced automatically.
 - **Deleting decks**: use **Delete deck…** in a deck tile's ⋮ menu, or press
   **Select decks** on the Decks page, tick several (click the tiles) and press
   **Delete**. You're always asked to confirm. Your cards stay in your library,

@@ -12,7 +12,7 @@
             <li class="txt-row{% if e.change %} chg-row chg-row-{{ e.change.status }}{% endif %}{% if not e.is_basic and e.owned|add:e.proxies < e.quantity %} need{% endif %}" tabindex="0"
                 data-name="{{ e.name }}" data-img="{{ e.image_url }}" data-type="{{ e.type_line }}" data-price="{{ e.price|money }}"
                 data-qty="{{ e.quantity }}" data-owned="{% if e.is_basic %}Basic land{% else %}You own {{ e.owned }}{% endif %}{% if e.proxies %} · {{ e.proxies }} prox{{ e.proxies|pluralize:'y,ies' }}{% endif %}"
-                data-card="{% url 'collection:card' e.card_id %}" data-update="{% url 'collection:deck_entry_update' e.id %}" data-card-id="{{ e.card_id }}" data-board="{{ e.board }}" data-basic="{% if e.is_basic %}1{% endif %}" data-collect="{{ e.collect_qty }}" data-short="{{ e.short }}">
+                data-card="{% url 'collection:card' e.card_id %}" data-update="{% url 'collection:deck_entry_update' e.id %}" data-card-id="{{ e.card_id }}" data-board="{{ e.board }}">
               {% include "collection/_keep_box.html" %}
               {% include "collection/_qty_buttons.html" with show_qty=True %}
               <span class="txt-name">{{ e.name }}</span>{% include "collection/_change_badge.html" %}
@@ -37,13 +37,6 @@
       <button type="submit" class="btn small">Save</button>
       <button type="submit" class="btn small ghost" name="quantity" value="0" formnovalidate>Remove card</button>
     </form>
-    <form method="post" action="{% url 'collection:deck_card_collect' deck.pk %}" id="txt-collect-form" class="txt-controls collect-form" hidden>
-      {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><input type="hidden" name="card_id" id="txt-collect-id">
-      <label class="small" for="txt-collect-qty">Got</label>
-      <input type="number" id="txt-collect-qty" name="quantity" min="1" max="999" class="qty qty-small">
-      <select name="finish" class="compact" aria-label="Finish"><option value="nonfoil">Non-foil</option><option value="foil">Foil</option><option value="etched">Etched</option></select>
-      <button type="submit" class="btn small" id="txt-collect-btn">Add to collection</button>
-    </form>
     <form method="post" action="{% url 'collection:deck_cover' deck.pk %}" id="txt-cover-form" class="txt-controls" hidden>
       {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><input type="hidden" name="card_id" id="txt-cover-id">
       <button type="submit" class="btn small">Use as deck cover</button>
@@ -66,11 +59,6 @@
       document.getElementById("txt-price").textContent = d.price;
       document.getElementById("txt-owned").textContent = d.owned;
       qtyForm.action = d.update; document.getElementById("txt-qty").value = d.qty; qtyForm.hidden = false;
-      var collect = document.getElementById("txt-collect-form");
-      collect.hidden = !!d.basic;
-      document.getElementById("txt-collect-id").value = d.cardId;
-      document.getElementById("txt-collect-qty").value = d.collect || 1;
-      document.getElementById("txt-collect-btn").classList.toggle("primary", Number(d.short) > 0);
       document.getElementById("txt-cover-id").value = d.cardId; document.getElementById("txt-link").href = d.card; coverForm.hidden = false;
     }
     img.addEventListener("error", function () { img.hidden = true; noimg.hidden = false; noimg.textContent = document.getElementById("txt-name").textContent; });

@@ -108,9 +108,28 @@
     }
   }
 
+  // "All cards" asks Scryfall, so wait a little longer for typing to pause.
+  const allCards = () => (form.querySelector('input[name="src"]:checked') || {}).value === "all";
   input.addEventListener("input", function () {
     clearTimeout(timer);
-    timer = setTimeout(search, 250);
+    timer = setTimeout(search, allCards() ? 600 : 250);
+  });
+  form.querySelectorAll('input[name="src"]').forEach(function (radio) {
+    radio.addEventListener("change", function () {
+      const label = form.querySelector('label[for="lib-q"]');
+      if (label) label.textContent = allCards() ? "Search all Magic cards" : "Search your library";
+      clearTimeout(timer);
+      search();
+      input.focus();
+    });
+  });
+  // "Not here? Search all cards" link in the results: switch to All cards without reloading.
+  box.addEventListener("click", function (ev) {
+    const link = ev.target.closest("[data-src-all]");
+    if (!link) return;
+    ev.preventDefault();
+    const radio = form.querySelector('input[name="src"][value="all"]');
+    if (radio) { radio.checked = true; radio.dispatchEvent(new Event("change")); }
   });
   form.addEventListener("submit", function (ev) {
     ev.preventDefault();

@@ -460,9 +460,6 @@ def _deck_entries(deck, owned=None, by_name=None):
             "game_changer": c.game_changer, "proxies": min(entry.proxies, entry.quantity),
             "power": c.power, "toughness": c.toughness, "loyalty": c.loyalty,
         })
-        owned_here = rows[-1]["owned"]
-        rows[-1]["short"] = 0 if c.is_basic_land else max(0, entry.quantity - owned_here)
-        rows[-1]["collect_qty"] = rows[-1]["short"] or 1
     return rows
 
 
@@ -599,6 +596,12 @@ def deck_detail(request, pk):
             "blocked": blocked, "max_add": most, "limit": _copy_limit(deck, card),
         })
 
+    # "All cards" mode: search Scryfall for cards you don't own yet, to add to your collection.
+    source = "all" if request.GET.get("src") == "all" else "lib"
+    all_results, all_error = [], None
+    if source == "all" and len(q) >= 2:
+        all_results, all_error = _search_all_cards(q, commander_colors if fit else "")
+
     boards = _boards(deck)
     # Where the library's Add buttons come back to: this page (without the live-search
     # flag), and the browser restores the scroll position.
@@ -607,7 +610,7 @@ def deck_detail(request, pk):
     library_back = request.path + (f"?{params.urlencode()}" if params else "")
     template = "collection/_library_results.html" if request.GET.get("partial") == "library" else "collection/deck.html"
     return render(request, template, {
-        "library_back": library_back,
+        "library_back": library_back, "source": source, "all_results": all_results, "all_error": all_error,
         "active_tab": "decks", "deck": deck, "stats": stats, "boards": boards,
         "default_board": "commander" if deck.format == "commander" and not has_commander else "main",
         "formats": Deck.FORMAT_CHOICES, "q": q, "search": found, "results": results,
@@ -623,6 +626,73 @@ def deck_detail(request, pk):
         "spellbook_tag_name": brackets.SPELLBOOK_TAG_NAMES.get((deck.spellbook_result or {}).get("bracketTag"), ""),
         "spellbook_bracket": brackets.SPELLBOOK_TAGS.get((deck.spellbook_result or {}).get("bracketTag")),
     })
+
+
+FINISH_PRICE = {"nonfoil": "usd", "foil": "usd_foil", "etched": "usd_etched"}
+
+
+def _search_all_cards(q, identity="", limit=24):
+    """Scryfall search for the deck page's "All cards" mode. An exact name lists its printings;
+    anything else lists one printing per card. Returns (results, error)."""
+    fit = f" id<={identity}" if identity else ""
+    try:
+        results = scryfall.search(f'!"{q}"{fit}', limit=limit)
+        if not results:
+            results = scryfall.search(f"{q}{fit}", unique="cards", limit=limit)
+    except scryfall.ScryfallError as exc:
+        return [], str(exc)
+    held = {}
+    for sid, finish, qty in CollectionItem.objects.values_list("card__scryfall_id", "finish", "quantity"):
+        held[sid] = held.get(sid, 0) + qty
+    names = {}
+    for name, qty in CollectionItem.objects.values_list("card__name", "quantity"):
+        names[name] = names.get(name, 0) + qty
+    for r in results:
+        r["owned_printing"] = held.get(r["scryfall_id"], 0)
+        r["owned_any"] = names.get(r["name"], 0)
+        r["finish_options"] = [
+            {"value": f, "label": dict(CollectionItem.FINISH_CHOICES)[f], "price": r.get(FINISH_PRICE[f])}
+            for f in r.get("finishes", []) if f in dict(CollectionItem.FINISH_CHOICES)
+        ] or [{"value": "nonfoil", "label": "Non-foil", "price": r.get("usd")}]
+    return results, None
+
+
+@require_POST
+def deck_library_collect(request, pk):
+    """From the deck page's library panel: add a card to your collection, and to the deck if asked."""
+    deck = get_object_or_404(Deck, pk=pk)
+    back = reverse("collection:deck", args=[deck.pk]) + "#library"
+    finish = request.POST.get("finish", "nonfoil")
+    finish = finish if finish in dict(CollectionItem.FINISH_CHOICES) else "nonfoil"
+    qty = max(1, min(999, _positive_int(request.POST.get("quantity"), 1)))
+    try:
+        item, _created = services.add_to_collection(request.POST.get("scryfall_id", ""), finish, qty)
+    except scryfall.ScryfallError as exc:
+        messages.error(request, f"Couldn't add that card. {exc}")
+        return _back(request, back)
+    card = item.card
+    filled = services.fill_wants(card, qty, finish)
+    total = _sum_quantity(CollectionItem.objects.filter(card__name=card.name))
+    msg = f"Added {qty} {card.name} ({card.set_code.upper()}, {item.get_finish_display().lower()}) to your collection. You own {total} now."
+    if filled:
+        msg += f" Took {filled} off your want list."
+    if request.POST.get("also_deck") == "1":
+        board = _board_from(deck, request.POST.get("board"))
+        try:
+            add, note = check_deck_rules(deck, card, board, qty)
+        except RuleError as exc:
+            messages.success(request, msg)
+            messages.error(request, f"Didn't add it to {deck.name}: {exc}")
+            return _back(request, back)
+        versions.checkpoint(deck)
+        entry, created = DeckCard.objects.get_or_create(deck=deck, card=card, board=board, defaults={"quantity": add})
+        if not created:
+            entry.quantity += add
+            entry.save(update_fields=["quantity"])
+        deck.save(update_fields=["updated_at"])
+        msg += f" Added {add} to {entry.get_board_display().lower()}.{note}"
+    messages.success(request, msg)
+    return _back(request, back)
 
 
 @require_POST
@@ -1065,28 +1135,6 @@ def deck_collect_needed(request, pk):
         services.record_collection_value()
     messages.success(request, f"Added {added} card{'s' if added != 1 else ''} to your collection. {deck.name} is complete.")
     return redirect("collection:deck", pk=deck.pk)
-
-
-@require_POST
-def deck_card_collect(request, pk):
-    """Add copies of one of the deck's cards to your collection (from the deck list)."""
-    deck = get_object_or_404(Deck, pk=pk)
-    entry = DeckCard.objects.select_related("card").filter(
-        deck=deck, card_id=_positive_int(request.POST.get("card_id"), 0)).first()
-    card = entry.card if entry else None
-    if card is None:
-        messages.error(request, "That card isn't in this deck.")
-        return _back(request, reverse("collection:deck", args=[deck.pk]))
-    qty = max(1, min(999, _positive_int(request.POST.get("quantity"), 1)))
-    finish = request.POST.get("finish", "nonfoil")
-    item, filled = services.collect_card(card, qty, finish)
-    total = sum(CollectionItem.objects.filter(card__name=card.name).values_list("quantity", flat=True))
-    msg = (f"Added {qty} {card.name} ({item.get_finish_display().lower()}) to your collection. "
-           f"You own {total} now.")
-    if filled:
-        msg += f" Took {filled} off your want list."
-    messages.success(request, msg)
-    return _back(request, reverse("collection:deck", args=[deck.pk]))
 
 
 def precon_list(request):

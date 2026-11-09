@@ -1,8 +1,0 @@
-<form method="post" action="{% url 'collection:deck_card_collect' deck.pk %}" class="collect-form">
-  {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><input type="hidden" name="card_id" value="{{ e.card_id }}">
-  <input class="qty qty-small" type="number" name="quantity" min="1" max="999" value="{{ e.collect_qty }}" aria-label="Copies of {{ e.name }} to add to your collection">
-  <select name="finish" class="compact" aria-label="Finish">
-    <option value="nonfoil">Non-foil</option><option value="foil">Foil</option><option value="etched">Etched</option>
-  </select>
-  <button type="submit" class="btn small{% if e.short %} primary{% endif %}" title="Add these copies to your collection{% if e.short %} (you're {{ e.short }} short){% endif %}">Add to collection</button>
-</form>

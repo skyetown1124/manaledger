@@ -2148,43 +2148,54 @@ class DeckDeleteTests(TestCase):
         self.assertContains(page, reverse("collection:deck_delete", args=[self.deck.pk]))
 
 
-class DeckCollectTests(TestCase):
-    def setUp(self):
-        self.ring = make_card("Sol Ring", type_line="Artifact")
-        self.ring2 = make_card("Sol Ring", type_line="Artifact", set_code="c21", scryfall_id="id-sol-ring-c21")
-        self.bolt = make_card("Lightning Bolt", type_line="Instant")
-        self.outsider = make_card("Counterspell", type_line="Instant")
-        CollectionItem.objects.create(card=self.bolt, quantity=1)
-        self.deck = Deck.objects.create(name="Mix", format="casual")
-        DeckCard.objects.create(deck=self.deck, card=self.ring, quantity=1)
-        DeckCard.objects.create(deck=self.deck, card=self.bolt, quantity=3)
-        self.url = reverse("collection:deck_card_collect", args=[self.deck.pk])
+class LibraryAllCardsTests(TestCase):
+    """The deck page's library panel can search all cards and add them to your collection."""
 
-    def test_adds_copies_and_fills_matching_wants(self):
-        want_any = WantItem.objects.create(card=self.ring2, any_printing=True, quantity=1)
-        foil_only = WantItem.objects.create(card=self.ring, any_printing=False, finish="foil", quantity=1)
-        resp = self.client.post(self.url, {"card_id": self.ring.pk, "quantity": 1, "finish": "nonfoil"}, follow=True)
-        item = CollectionItem.objects.get(card=self.ring)
-        self.assertEqual((item.quantity, item.finish), (1, "nonfoil"))
-        self.assertFalse(WantItem.objects.filter(pk=want_any.pk).exists())
-        self.assertTrue(WantItem.objects.filter(pk=foil_only.pk).exists())  # wrong finish, untouched
+    def setUp(self):
+        self.deck = Deck.objects.create(name="Pile", format="casual")
+        self.url = reverse("collection:deck", args=[self.deck.pk])
+        self.collect = reverse("collection:deck_library_collect", args=[self.deck.pk])
+        self.ring = fake_card("Sol Ring", "cmm", "410", finishes=("nonfoil", "foil"), usd="1.20", foil="6.20")
+
+    def test_all_cards_search_shows_scryfall_results_with_add_buttons(self):
+        with mock.patch.object(scryfall, "search", return_value=[self.ring]) as search_:
+            page = self.client.get(self.url + "?src=all&q=Sol+Ring&partial=library")
+        search_.assert_called_once()
+        self.assertContains(page, "Sol Ring")
+        self.assertContains(page, "Add to collection")
+        self.assertContains(page, "+ deck too")
+        self.assertContains(page, '<option value="foil">Foil</option>', html=True)
+        self.assertContains(page, "Not in your collection")
+
+    def test_library_mode_never_calls_scryfall_and_offers_the_switch(self):
+        with mock.patch.object(scryfall, "search") as search_:
+            page = self.client.get(self.url + "?q=Sol+Ring")
+        search_.assert_not_called()
+        self.assertContains(page, "All cards (add to collection)")
+        self.assertContains(page, "Not here? Search all cards")
+
+    def test_add_to_collection_only(self):
+        want = WantItem.objects.create(card=make_card("Sol Ring", scryfall_id="old-ring"), any_printing=True, quantity=2)
+        with mock.patch.object(scryfall, "get_card", return_value=self.ring):
+            resp = self.client.post(self.collect, {"scryfall_id": "cmm-410", "quantity": 1, "finish": "foil"}, follow=True)
+        item = CollectionItem.objects.get(card__scryfall_id="cmm-410")
+        self.assertEqual((item.quantity, item.finish), (1, "foil"))
+        self.assertFalse(self.deck.entries.exists())
+        want.refresh_from_db()
+        self.assertEqual(want.quantity, 1)
         self.assertContains(resp, "Took 1 off your want list")
 
-    def test_adds_to_an_existing_stack(self):
-        self.client.post(self.url, {"card_id": self.bolt.pk, "quantity": 2})
-        self.assertEqual(CollectionItem.objects.get(card=self.bolt, finish="nonfoil").quantity, 3)
+    def test_add_to_collection_and_deck(self):
+        with mock.patch.object(scryfall, "get_card", return_value=self.ring):
+            self.client.post(self.collect, {"scryfall_id": "cmm-410", "quantity": 2, "also_deck": "1", "board": "main"})
+        self.assertEqual(CollectionItem.objects.get(card__scryfall_id="cmm-410").quantity, 2)
+        entry = self.deck.entries.get()
+        self.assertEqual((entry.card.name, entry.quantity, entry.board), ("Sol Ring", 2, "main"))
 
-    def test_only_cards_in_the_deck(self):
-        self.client.post(self.url, {"card_id": self.outsider.pk, "quantity": 1})
-        self.assertFalse(CollectionItem.objects.filter(card=self.outsider).exists())
-
-    def test_every_view_offers_it_with_the_shortfall(self):
-        base = reverse("collection:deck", args=[self.deck.pk])
-        table = self.client.get(base + "?view=table")
-        self.assertContains(table, "Add to collection")
-        self.assertContains(table, 'name="quantity" min="1" max="999" value="2"')  # 3 used, own 1
-        self.assertContains(table, "Got 2")  # Cards you need list
-        self.assertContains(self.client.get(base + "?view=stacks"), 'aria-label="Add 2 Lightning Bolt to my collection"')
-        text = self.client.get(base + "?view=text")
-        self.assertContains(text, 'id="txt-collect-form"')
-        self.assertContains(text, 'data-collect="2"')
+    def test_deck_rules_still_apply(self):
+        deck = Deck.objects.create(name="Cmdr", format="commander")
+        url = reverse("collection:deck_library_collect", args=[deck.pk])
+        with mock.patch.object(scryfall, "get_card", return_value=self.ring):
+            self.client.post(url, {"scryfall_id": "cmm-410", "quantity": 3, "also_deck": "1", "board": "main"})
+        self.assertEqual(CollectionItem.objects.get(card__scryfall_id="cmm-410").quantity, 3)
+        self.assertLessEqual(sum(deck.entries.values_list("quantity", flat=True)), 1)  # singleton

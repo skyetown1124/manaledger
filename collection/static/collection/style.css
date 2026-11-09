@@ -956,10 +956,15 @@ body.selecting-decks .ad-cover { cursor: pointer; }
 .confirm-dialog p { margin: 0; line-height: 1.5; }
 .confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 
-/* Add a deck card to your collection */
-.collect-form { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0 2px; }
-.collect-form .qty-small { width: 56px; }
-.collect-form select.compact { width: auto; }
-.need-actions { display: inline-flex; gap: 6px; }
-.need-actions form { margin: 0; }
-.stk-tools .stk-collect { color: #9be7a5; }
+/* Library panel: search your library or all cards (to add to your collection) */
+.lib-source { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; flex-basis: 100%; width: fit-content; }
+.lib-source .seg-opt { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; cursor: pointer; font-size: 14px; color: var(--muted); }
+.lib-source .seg-opt + .seg-opt { border-left: 1px solid var(--line); }
+.lib-source input { position: absolute; opacity: 0; pointer-events: none; }
+.lib-source .seg-opt:has(input:checked) { background: var(--accent); color: #fff; }
+.lib-source .seg-opt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
+.lib-all .lib-card { display: flex; gap: 10px; align-items: flex-start; }
+.lib-thumb { width: 54px; border-radius: 4px; flex: none; }
+.lib-collect { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.lib-collect-row { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; }
+.lib-collect .qty { width: 60px; }
