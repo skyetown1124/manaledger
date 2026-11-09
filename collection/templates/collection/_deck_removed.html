@@ -1,0 +1,20 @@
+{% if show_changes and changes and changes.removed %}
+  <section class="removed-group">
+    <h4 class="group-title">Removed since {{ since.created_at|date:"M j, g:i A" }} <span class="muted">({{ changes.removed_count }})</span></h4>
+    <ul class="removed-list">
+      {% for r in changes.removed %}
+        <li>
+          <span class="chg-badge chg-removed">Removed</span>
+          <a href="{% url 'collection:card' r.card_id %}"><s>{{ r.quantity }} {{ r.name }}</s></a>
+          <span class="small muted">{% if r.board == "side" %}Sideboard{% elif r.board == "commander" %}Command zone{% else %}Main deck{% endif %}</span>
+          <span class="spacer"></span>
+          <form method="post" action="{% url 'collection:deck_put_back' deck.pk %}">
+            {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <input type="hidden" name="card_id" value="{{ r.card_id }}"><input type="hidden" name="board" value="{{ r.board }}"><input type="hidden" name="quantity" value="{{ r.quantity }}">
+            <button type="submit" class="btn small">Put back</button>
+          </form>
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+{% endif %}

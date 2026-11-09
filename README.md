@@ -210,6 +210,20 @@ your choice):
 - **Table**: the editing view, for moving cards between sections and marking
   proxies.
 
+**Show changes.** Tick **Show changes** above the deck list to see what's
+different from an earlier version, in any view: cards added are marked **New**,
+changed counts show **+1** / **−1**, cards moved between the main deck and
+sideboard say where from, and removed cards are listed under "Removed since …"
+with a **Put back** button. By default it compares with the previous version;
+pick any saved version from the "since" list. Printings of the same card count
+together.
+
+Versions are saved automatically before you edit (one per editing session: if
+the last one is over 30 minutes old), before a list import or Archidekt update
+replaces the deck, and the first time you open a deck. **Versions** (next to the
+checkbox) lets you save one by hand with a name, compare with any version, or
+**Restore** a whole version (the list you had is saved first, so you can undo it).
+
 Pick a specific cover under **Deck settings**, or with ★ in the stacks view.
 
 ## Proxies

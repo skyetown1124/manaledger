@@ -14,8 +14,8 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from . import decks as deckrules
-from . import archidekt, backup, brackets, importer, suggest, ocr, precons, rules, scryfall, search, services, spellbook
-from .models import (Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, GlossaryTerm, LinkedProfile, Precon, PriceSnapshot, WantItem,
+from . import archidekt, backup, brackets, importer, suggest, versions, ocr, precons, rules, scryfall, search, services, spellbook
+from .models import (Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, DeckVersion, GlossaryTerm, LinkedProfile, Precon, PriceSnapshot, WantItem,
                      Rule, RulesEdition)
 from .stats import build_dashboard
 
@@ -543,6 +543,17 @@ def deck_detail(request, pk):
         request.session["deck_view"] = view
     else:
         view = request.session.get("deck_view", "stacks")
+    versions.ensure_baseline(deck)
+    deck_versions = list(deck.versions.all()[:versions.KEEP])
+    show_changes = request.GET.get("changes") == "1"
+    since, changes = None, None
+    if show_changes:
+        wanted = request.GET.get("since", "")
+        since = next((v for v in deck_versions if str(v.pk) == wanted), None) or versions.previous_version(deck)
+        if since:
+            changes = versions.diff(entries, since)
+            for e in entries:
+                e["change"] = changes["by_entry"].get(e["id"])
 
     # Other decks that use the same cards (you can share a card between decks).
     elsewhere = {}
@@ -597,6 +608,7 @@ def deck_detail(request, pk):
         "bracket_names": brackets.BRACKET_NAMES,
         "buy_list": deckrules.buy_list_text(stats["needs"]),
         "view": view, "deck_views": DECK_VIEWS, "cover": _deck_cover(deck, entries),
+        "deck_versions": deck_versions, "show_changes": show_changes, "since": since, "changes": changes,
         "cover_choices": sorted({(e["card_id"], e["name"]) for e in entries if e.get("image_url")}, key=lambda x: x[1]),
         "spellbook_tag_name": brackets.SPELLBOOK_TAG_NAMES.get((deck.spellbook_result or {}).get("bracketTag"), ""),
         "spellbook_bracket": brackets.SPELLBOOK_TAGS.get((deck.spellbook_result or {}).get("bracketTag")),
@@ -671,6 +683,7 @@ def deck_playtest(request, pk):
 def deck_add(request, pk):
     deck = get_object_or_404(Deck, pk=pk)
     card = get_object_or_404(Card, pk=request.POST.get("card_id"))
+    versions.checkpoint(deck)
     board = _board_from(deck, request.POST.get("board"))
     qty = max(1, _positive_int(request.POST.get("quantity"), 1))
     back = reverse("collection:deck", args=[deck.pk])
@@ -706,6 +719,7 @@ def deck_add(request, pk):
 def deck_entry_update(request, pk):
     entry = get_object_or_404(DeckCard.objects.select_related("deck", "card"), pk=pk)
     deck, card = entry.deck, entry.card
+    versions.checkpoint(deck)
     back = reverse("collection:deck", args=[deck.pk])
     qty = _positive_int(request.POST.get("quantity"), entry.quantity)
     board = _board_from(deck, request.POST.get("board", entry.board))
@@ -747,6 +761,7 @@ def deck_entry_update(request, pk):
 @require_POST
 def deck_add_basics(request, pk):
     deck = get_object_or_404(Deck, pk=pk)
+    versions.checkpoint(deck)
     added = []
     for name in BASIC_LANDS:
         n = _positive_int(request.POST.get(name.lower()), 0)
@@ -960,6 +975,7 @@ def deck_import(request, pk):
             messages.error(request, "That import couldn't be read. Check the list again.")
             return redirect("collection:deck_import", pk=deck.pk)
         try:
+            versions.checkpoint(deck, "Before importing a list" if deck.entries.exists() else "")
             summary = services.import_to_deck(deck, items, replace=request.POST.get("replace") == "1",
                                               add_to_collection=request.POST.get("collect") == "1")
         except scryfall.ScryfallError as exc:
@@ -1173,6 +1189,7 @@ def archidekt_sync(request, pk):
         return redirect("collection:deck", pk=deck.pk)
     try:
         with transaction.atomic():
+            versions.checkpoint(deck, "Before updating from Archidekt")
             _, summary = _archidekt_import(deck, deck.source_id)
     except (archidekt.ArchidektError, scryfall.ScryfallError) as exc:
         messages.error(request, f"Nothing was changed. {exc}")
@@ -1248,6 +1265,7 @@ def deck_from_commander(request):
 def deck_cut(request, pk):
     """Remove every copy of a card from a deck (main and sideboard; never the commander)."""
     deck = get_object_or_404(Deck, pk=pk)
+    versions.checkpoint(deck)
     name = request.POST.get("name", "")
     removed, _ = DeckCard.objects.filter(deck=deck, card__name=name).exclude(board="commander").delete()
     if removed:
@@ -1492,4 +1510,62 @@ def deck_cover(request, pk):
         deck.cover_card = None
         messages.success(request, f"{deck.name} uses its commander (or most valuable card) as the cover.")
     deck.save(update_fields=["cover_card"])
+    return _back(request, reverse("collection:deck", args=[deck.pk]))
+
+
+
+# ------------------------------------------------------------------ Deck versions
+
+@require_POST
+def deck_version_save(request, pk):
+    deck = get_object_or_404(Deck, pk=pk)
+    label = request.POST.get("label", "").strip() or f"Saved {timezone.localtime():%b %-d, %-I:%M %p}"
+    versions.snapshot(deck, label=label)
+    messages.success(request, f'Saved this version of {deck.name} as "{label}".')
+    return _back(request, reverse("collection:deck", args=[deck.pk]))
+
+
+@require_POST
+def deck_version_restore(request, pk, version_id):
+    """Put a whole saved version back (the current list is saved first, so this can be undone)."""
+    deck = get_object_or_404(Deck, pk=pk)
+    version = get_object_or_404(DeckVersion, pk=version_id, deck=deck)
+    if request.POST.get("confirm") != "yes":
+        messages.error(request, "Tick the box to confirm replacing the deck with that version.")
+        return _back(request, reverse("collection:deck", args=[deck.pk]))
+    cards = {c.id: c for c in Card.objects.filter(pk__in=[c["card_id"] for c in version.cards])}
+    missing = 0
+    with transaction.atomic():
+        versions.snapshot(deck, label="Before restoring an older version")
+        deck.entries.all().delete()
+        for c in version.cards:
+            if c["card_id"] not in cards:
+                missing += 1
+                continue
+            DeckCard.objects.create(deck=deck, card=cards[c["card_id"]], board=c["board"],
+                                    quantity=c["quantity"], proxies=min(c.get("proxies", 0), c["quantity"]))
+        deck.save(update_fields=["updated_at"])
+    when = timezone.localtime(version.created_at)
+    msg = f"Restored {deck.name} to the version from {when:%b %-d, %-I:%M %p}. The list you had is saved as a version, so you can switch back."
+    if missing:
+        msg += f" {missing} card(s) are no longer in the app's card list and were skipped."
+    messages.success(request, msg)
+    return redirect(reverse("collection:deck", args=[deck.pk]) + "#deck-list")
+
+
+@require_POST
+def deck_put_back(request, pk):
+    """Put one removed card back into the deck (from "Show changes")."""
+    deck = get_object_or_404(Deck, pk=pk)
+    card = get_object_or_404(Card, pk=request.POST.get("card_id"))
+    board = request.POST.get("board", "main")
+    board = board if board in dict(DeckCard.BOARD_CHOICES) else "main"
+    qty = max(1, min(99, _positive_int(request.POST.get("quantity"), 1)))
+    versions.checkpoint(deck)
+    entry, created = DeckCard.objects.get_or_create(deck=deck, card=card, board=board, defaults={"quantity": qty})
+    if not created:
+        entry.quantity += qty
+        entry.save(update_fields=["quantity"])
+    deck.save(update_fields=["updated_at"])
+    messages.success(request, f"Put {card.name} back in {deck.name}.")
     return _back(request, reverse("collection:deck", args=[deck.pk]))

@@ -9,11 +9,11 @@
         </header>
         <ul>
           {% for e in group.entries %}
-            <li class="txt-row{% if not e.is_basic and e.owned|add:e.proxies < e.quantity %} need{% endif %}" tabindex="0"
+            <li class="txt-row{% if e.change %} chg-row chg-row-{{ e.change.status }}{% endif %}{% if not e.is_basic and e.owned|add:e.proxies < e.quantity %} need{% endif %}" tabindex="0"
                 data-name="{{ e.name }}" data-img="{{ e.image_url }}" data-type="{{ e.type_line }}" data-price="{{ e.price|money }}"
                 data-qty="{{ e.quantity }}" data-owned="{% if e.is_basic %}Basic land{% else %}You own {{ e.owned }}{% endif %}{% if e.proxies %} · {{ e.proxies }} prox{{ e.proxies|pluralize:'y,ies' }}{% endif %}"
                 data-card="{% url 'collection:card' e.card_id %}" data-update="{% url 'collection:deck_entry_update' e.id %}" data-card-id="{{ e.card_id }}">
-              <span class="txt-name">{{ e.quantity }} {{ e.name }}</span>
+              <span class="txt-name">{{ e.quantity }} {{ e.name }}</span>{% include "collection/_change_badge.html" %}
               <span class="txt-cost">{{ e.mana_cost|mana }}</span>
             </li>
           {% endfor %}

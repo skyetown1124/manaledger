@@ -1,0 +1,55 @@
+{% load money %}
+<div class="changes-bar">
+  <form method="get" action="#deck-list" class="changes-form">
+    <input type="hidden" name="view" value="{{ view }}">
+    <label class="check"><input type="checkbox" name="changes" value="1" {% if show_changes %}checked{% endif %} onchange="this.form.submit()"> Show changes</label>
+    {% if deck_versions %}
+      <label class="small" for="changes-since">since</label>
+      <select id="changes-since" name="since" class="compact" onchange="this.form.changes.checked = true; this.form.submit()">
+        <option value="">The previous version</option>
+        {% for v in deck_versions %}<option value="{{ v.pk }}" {% if since and since.pk == v.pk and request.GET.since %}selected{% endif %}>{{ v.created_at|date:"M j, g:i A" }} · {{ v.size }} cards{% if v.label %} · {{ v.label }}{% endif %}</option>{% endfor %}
+      </select>
+    {% endif %}
+    <noscript><button type="submit" class="btn small">Show</button></noscript>
+  </form>
+  {% if show_changes %}
+    {% if changes %}
+      <span class="changes-summary">
+        Since {{ since.created_at|date:"M j, g:i A" }}{% if since.label %} ({{ since.label }}){% endif %}:
+        <span class="chg-badge chg-new">{{ changes.added }} new</span>
+        <span class="chg-badge chg-more">{{ changes.changed }} changed</span>
+        <span class="chg-badge chg-removed">{{ changes.removed_count }} removed</span>
+      </span>
+    {% else %}
+      <span class="small muted">No earlier version that's different from this one yet. Versions are saved before you edit (one per editing session), or press Save version.</span>
+    {% endif %}
+  {% endif %}
+  <span class="spacer"></span>
+  <details class="versions-menu">
+    <summary class="btn small ghost">Versions ({{ deck_versions|length }})</summary>
+    <div class="versions-panel">
+      <form method="post" action="{% url 'collection:deck_version_save' deck.pk %}" class="row-actions">
+        {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <label class="sr" for="version-label">Name for this version</label>
+        <input type="text" id="version-label" name="label" placeholder="Name (optional), e.g. Before upgrades" maxlength="100">
+        <button type="submit" class="btn small primary">Save version</button>
+      </form>
+      <p class="small muted">The app also saves a version before you edit, once per editing session (30 minutes), and before an import or Archidekt update replaces the list.</p>
+      <ol class="versions-list">
+        {% for v in deck_versions %}
+          <li>
+            <div><strong>{{ v.created_at|date:"M j, Y g:i A" }}</strong> · {{ v.size }} cards{% if v.label %}<div class="small muted">{{ v.label }}</div>{% endif %}</div>
+            <a class="btn small ghost" href="?view={{ view }}&amp;changes=1&amp;since={{ v.pk }}#deck-list">Compare</a>
+            <form method="post" action="{% url 'collection:deck_version_restore' deck.pk v.pk %}" class="restore-form">
+              {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+              <label class="check small"><input type="checkbox" name="confirm" value="yes" required> Sure</label>
+              <button type="submit" class="btn small">Restore</button>
+            </form>
+          </li>
+        {% empty %}
+          <li class="muted small">No versions yet.</li>
+        {% endfor %}
+      </ol>
+    </div>
+  </details>
+</div>

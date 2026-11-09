@@ -162,6 +162,7 @@
         {% for value, label in deck_views %}<a href="?view={{ value }}#deck-list" class="{% if value == view %}active{% endif %}" {% if value == view %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
       </nav>
       <span class="spacer"></span><span class="summary">{{ stats.deck_count }} cards · {{ stats.value|money }}</span><a class="btn small" href="{% url 'collection:deck_proxies' deck.pk %}{% if not stats.proxy_count %}?all=1{% endif %}">Print proxies</a><a class="btn small" href="{% url 'collection:deck_suggestions' deck.pk %}">Suggestions</a><a class="btn small" href="{% url 'collection:deck_import' deck.pk %}">Import list</a>{% if stats.deck_count %}<a class="btn primary small" href="{% url 'collection:deck_playtest' deck.pk %}">Playtest</a>{% endif %}</div>
+    {% include "collection/_deck_changes.html" %}
     {% if stats.groups and view == "stacks" %}
       {% include "collection/_deck_stacks.html" %}
     {% elif stats.groups and view == "text" %}
@@ -173,14 +174,14 @@
           <table class="data deck-table">
             <tbody>
               {% for e in group.entries %}
-                <tr class="{% if not e.is_basic and e.owned|add:e.proxies < e.quantity %}short{% endif %}">
+                <tr class="{% if not e.is_basic and e.owned|add:e.proxies < e.quantity %}short{% endif %}{% if e.change %} chg-row chg-row-{{ e.change.status }}{% endif %}">
                   <td class="qty-cell">
                     <input class="qty" type="number" min="0" {% if e.limit %}max="{{ e.limit }}" title="Up to {{ e.limit }} in this format"{% endif %} name="quantity" id="entry-qty-{{ e.id }}" value="{{ e.quantity }}" form="entry-{{ e.id }}" aria-label="Copies of {{ e.name }}">
                   </td>
                   <td class="card-cell">
                     <div class="card-name">
                       <a href="{% url 'collection:card' e.card_id %}">{{ e.name }}</a>
-                      {{ e.mana_cost|mana }}
+                      {{ e.mana_cost|mana }} {% include "collection/_change_badge.html" %}
                     </div>
                     <div class="muted small">
                       {% if e.is_basic %}Basic land{% else %}You own {{ e.owned }}{% endif %}{% if e.proxies %} · <span class="proxy-badge">{% if e.quantity > 1 %}{{ e.proxies }} prox{{ e.proxies|pluralize:"y,ies" }}{% else %}Proxy{% endif %}</span>{% endif %}{% if e.elsewhere %} · also in {{ e.elsewhere|join:", " }}{% endif %}
@@ -223,6 +224,7 @@
         <p>{% if deck.format == "commander" %}Start with your commander: search <code>is:commander</code> on the right and add one to the Commander section.{% else %}Search your library on the right and add cards.{% endif %}</p>
       </div>
     {% endif %}
+    {% include "collection/_deck_removed.html" %}
 
     <form class="basics" method="post" action="{% url 'collection:deck_add_basics' deck.pk %}">
       {% csrf_token %}

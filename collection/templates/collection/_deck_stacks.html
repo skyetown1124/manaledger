@@ -8,7 +8,7 @@
       </header>
       <div class="stk-pile">
         {% for e in group.entries %}
-          <div class="stk-card{% if not e.image_url %} noimg{% endif %}{% if not e.is_basic and e.owned|add:e.proxies < e.quantity %} need{% endif %}" tabindex="0">
+          <div class="stk-card{% if e.change %} chg-card chg-card-{{ e.change.status }}{% endif %}{% if not e.image_url %} noimg{% endif %}{% if not e.is_basic and e.owned|add:e.proxies < e.quantity %} need{% endif %}" tabindex="0">
             {% if e.image_url %}<img src="{{ e.image_url }}" alt="{{ e.name }}" loading="lazy" onerror="this.closest('.stk-card').classList.add('noimg')">{% endif %}
             <div class="stk-text" aria-hidden="{% if e.image_url %}true{% else %}false{% endif %}">
               <div class="stk-text-head"><strong>{{ e.name }}</strong><span>{{ e.mana_cost|mana }}</span></div>
@@ -17,6 +17,7 @@
               {% if e.power or e.toughness %}<div class="stk-text-pt">{{ e.power }}/{{ e.toughness }}</div>{% endif %}
             </div>
             <span class="stk-qty" title="{{ e.quantity }} in the deck">{{ e.quantity }}</span>
+            {% if e.change %}<span class="stk-chg">{% include "collection/_change_badge.html" %}</span>{% endif %}
             {% if e.proxies %}<span class="stk-tag proxy">Proxy</span>{% elif not e.is_basic and e.owned < e.quantity %}<span class="stk-tag need" title="You own {{ e.owned }} of {{ e.quantity }}">Need</span>{% endif %}
             <div class="stk-tools">
               <form method="post" action="{% url 'collection:deck_entry_update' e.id %}">

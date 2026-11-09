@@ -842,3 +842,36 @@ td.actions form + details, td.actions details + form { margin-top: 4px; }
 .cover-thumb { height: 34px; border-radius: 4px; }
 .view-switch a, .ad-name, .ad-menu-list a, .stk-tools a { text-decoration: none; }
 .ad-sym { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid rgba(0,0,0,.55); display: grid; place-items: center; font: 800 8.5px/1 var(--font); color: rgba(0,0,0,.7); }
+
+/* ---- Deck changes and versions ---- */
+.changes-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 14px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--chip-bg); font-size: 14px; }
+.changes-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.changes-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; }
+.chg-badge { display: inline-block; padding: 1px 7px; border-radius: 10px; font: 700 11px/1.5 var(--font); white-space: nowrap; vertical-align: middle; }
+.chg-new, .chg-more { background: color-mix(in srgb, var(--up) 22%, transparent); color: var(--up); border: 1px solid var(--up); }
+.chg-fewer { background: color-mix(in srgb, var(--gold) 20%, transparent); color: var(--gold); border: 1px solid var(--gold); }
+.chg-moved { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); border: 1px solid var(--accent); }
+.chg-removed { background: color-mix(in srgb, var(--down) 20%, transparent); color: var(--down); border: 1px solid var(--down); }
+.chg-row td:first-child, .txt-row.chg-row { box-shadow: inset 3px 0 0 var(--up); }
+.chg-row-fewer td:first-child, .txt-row.chg-row-fewer { box-shadow: inset 3px 0 0 var(--gold); }
+.chg-row-moved td:first-child, .txt-row.chg-row-moved { box-shadow: inset 3px 0 0 var(--accent); }
+.txt-row .chg-badge { margin-left: auto; margin-right: 6px; }
+.stk-card.chg-card { outline: 3px solid var(--up); outline-offset: -3px; }
+.stk-card.chg-card-fewer { outline-color: var(--gold); }
+.stk-card.chg-card-moved { outline-color: var(--accent); }
+.stk-chg { position: absolute; right: 4px; top: 4px; z-index: 2; }
+.stk-chg .chg-badge { background: #12161d; }
+.removed-group { margin-top: 10px; }
+.removed-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.removed-list li { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px dashed color-mix(in srgb, var(--down) 50%, var(--line)); border-radius: 6px; }
+.removed-list s { color: var(--muted); }
+.versions-menu { position: relative; }
+.versions-menu > summary { list-style: none; }
+.versions-menu > summary::-webkit-details-marker { display: none; }
+.versions-panel { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; width: min(460px, 86vw); max-height: 420px; overflow: auto;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; box-shadow: 0 10px 28px rgba(0,0,0,.45); }
+.versions-panel input[type=text] { flex: 1; min-width: 160px; }
+.versions-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.versions-list li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.versions-list li > div { flex: 1; }
+.restore-form { display: flex; align-items: center; gap: 6px; }

@@ -331,3 +331,19 @@ class WantItem(models.Model):
         """The current price is at or under your target."""
         price = self.unit_price
         return self.max_price is not None and price is not None and price <= self.max_price
+
+
+class DeckVersion(models.Model):
+    """A saved copy of a deck's card list, for "show changes" and restoring."""
+
+    deck = models.ForeignKey(Deck, on_delete=models.CASCADE, related_name="versions")
+    created_at = models.DateTimeField(auto_now_add=True)
+    label = models.CharField(max_length=100, blank=True, help_text="Your name for it, or why it was saved")
+    cards = models.JSONField(default=list, help_text="[{card_id, name, board, quantity, proxies}]")
+    size = models.PositiveIntegerField(default=0, help_text="Cards in the main deck and command zone")
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"{self.deck.name} @ {self.created_at:%Y-%m-%d %H:%M}"

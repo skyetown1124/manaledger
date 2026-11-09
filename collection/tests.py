@@ -11,7 +11,7 @@ import tempfile
 from django.core.management import call_command
 
 from . import decks, importer, scryfall, search
-from .models import Card, CollectionItem, Deck, DeckCard, LinkedProfile, WantItem
+from .models import Card, CollectionItem, Deck, DeckCard, DeckVersion, LinkedProfile, WantItem
 
 LEGAL_ALL = {f: "legal" for f in ("commander", "standard", "pioneer", "modern", "legacy", "vintage", "pauper")}
 
@@ -1878,3 +1878,113 @@ class DeckViewModeTests(TestCase):
         self.assertContains(decks, "ad-color-b")
         self.assertContains(decks, "ad-color-g")
         self.assertContains(decks, "View as stacks")
+
+
+# ------------------------------------------------------------------ Deck versions and "Show changes"
+
+class DeckVersionTests(TestCase):
+    def setUp(self):
+        self.ring = make_card("Sol Ring")
+        self.bolt = make_card("Lightning Bolt", type_line="Instant")
+        self.crypt = make_card("Mana Crypt")
+        self.negate = make_card("Negate", type_line="Instant")
+        for c in (self.ring, self.bolt, self.crypt, self.negate):
+            CollectionItem.objects.create(card=c, quantity=4)
+        self.deck = Deck.objects.create(name="Versions", format="casual")
+        self.ring_e = DeckCard.objects.create(deck=self.deck, card=self.ring, quantity=1)
+        self.bolt_e = DeckCard.objects.create(deck=self.deck, card=self.bolt, quantity=2)
+        self.crypt_e = DeckCard.objects.create(deck=self.deck, card=self.crypt, quantity=1)
+        self.negate_e = DeckCard.objects.create(deck=self.deck, card=self.negate, quantity=1, board="side")
+        self.url = reverse("collection:deck", args=[self.deck.pk])
+
+    def age_versions(self, minutes=45):
+        from datetime import timedelta
+        from django.utils import timezone
+        DeckVersion.objects.update(created_at=timezone.now() - timedelta(minutes=minutes))
+
+    def test_first_visit_saves_a_baseline_and_edits_show_as_changes(self):
+        self.client.get(self.url)
+        self.assertEqual(self.deck.versions.count(), 1)
+        # Edit: one more Bolt, Crypt out, Negate moves to the main deck, a new Ring... er, new card.
+        self.client.post(reverse("collection:deck_entry_update", args=[self.bolt_e.pk]), {"quantity": 3})
+        self.client.post(reverse("collection:deck_entry_update", args=[self.crypt_e.pk]), {"quantity": 0})
+        self.client.post(reverse("collection:deck_entry_update", args=[self.negate_e.pk]), {"quantity": 1, "board": "main"})
+        fresh = make_card("Brainstorm", type_line="Instant")
+        CollectionItem.objects.create(card=fresh, quantity=1)
+        self.client.post(reverse("collection:deck_add", args=[self.deck.pk]), {"card_id": fresh.pk, "board": "main"})
+        self.assertEqual(self.deck.versions.count(), 1)   # same editing session: no new version
+
+        page = self.client.get(self.url + "?view=table&changes=1")
+        ch = page.context["changes"]
+        self.assertEqual((ch["added"], ch["changed"], ch["removed_count"]), (1, 2, 1))
+        rows = [e for g in page.context["stats"]["groups"] for e in g["entries"]]
+        statuses = {e["name"]: (e.get("change") or {}).get("status") for e in rows}
+        self.assertEqual(statuses["Lightning Bolt"], "more")
+        self.assertEqual(statuses["Brainstorm"], "new")
+        self.assertEqual(statuses["Negate"], "moved")
+        self.assertEqual(statuses["Sol Ring"], None)
+        self.assertContains(page, "Moved from sideboard")
+        self.assertContains(page, "<s>1 Mana Crypt</s>", html=True)
+        for view in ("stacks", "text"):
+            self.assertContains(self.client.get(self.url + f"?view={view}&changes=1"), 'chg-badge chg-new')
+
+    def test_new_session_saves_a_version_first(self):
+        self.client.get(self.url)
+        self.age_versions()
+        self.client.post(reverse("collection:deck_entry_update", args=[self.bolt_e.pk]), {"quantity": 3})
+        self.assertEqual(self.deck.versions.count(), 1)   # list hadn't changed since the baseline: no duplicate
+        self.age_versions()
+        self.client.post(reverse("collection:deck_entry_update", args=[self.bolt_e.pk]), {"quantity": 4})
+        self.assertEqual(self.deck.versions.count(), 2)   # saved the 3-Bolt list before this edit
+        page = self.client.get(self.url + "?changes=1")
+        self.assertEqual(page.context["changes"]["by_entry"][self.bolt_e.pk], {"status": "more", "delta": 1, "was": 3})
+
+    def test_save_restore_and_put_back(self):
+        self.client.post(reverse("collection:deck_version_save", args=[self.deck.pk]), {"label": "Before upgrades"})
+        saved = self.deck.versions.get(label="Before upgrades")
+        self.client.post(reverse("collection:deck_cut", args=[self.deck.pk]), {"name": "Mana Crypt"})
+        self.assertFalse(self.deck.entries.filter(card=self.crypt).exists())
+
+        self.client.post(reverse("collection:deck_put_back", args=[self.deck.pk]),
+                         {"card_id": self.crypt.pk, "board": "main", "quantity": 1})
+        self.assertTrue(self.deck.entries.filter(card=self.crypt).exists())
+
+        self.client.post(reverse("collection:deck_cut", args=[self.deck.pk]), {"name": "Lightning Bolt"})
+        restore = reverse("collection:deck_version_restore", args=[self.deck.pk, saved.pk])
+        self.client.post(restore)  # not confirmed
+        self.assertFalse(self.deck.entries.filter(card=self.bolt).exists())
+        self.client.post(restore, {"confirm": "yes"})
+        self.assertEqual(self.deck.entries.get(card=self.bolt).quantity, 2)
+        self.assertTrue(self.deck.versions.filter(label="Before restoring an older version").exists())
+
+    def test_import_saves_a_named_version(self):
+        from . import versions
+        versions.checkpoint(self.deck, "Before importing a list")
+        self.assertTrue(self.deck.versions.filter(label="Before importing a list").exists())
+
+    def test_nothing_to_compare_yet(self):
+        page = self.client.get(self.url + "?changes=1")
+        self.assertIsNone(page.context["changes"])
+        self.assertContains(page, "No earlier version")
+
+
+class DeckVersionPrintingTests(TestCase):
+    def test_two_printings_of_one_card_compare_together(self):
+        from . import versions
+        a = make_card("Rhystic Study", scryfall_id="rs-pcy", set_code="pcy")
+        b = make_card("Rhystic Study", scryfall_id="rs-jmp", set_code="jmp")
+        deck = Deck.objects.create(name="P", format="casual")
+        ea = DeckCard.objects.create(deck=deck, card=a, quantity=1)
+        DeckCard.objects.create(deck=deck, card=b, quantity=1)
+        v = versions.snapshot(deck)
+        page = self.client.get(reverse("collection:deck", args=[deck.pk]) + f"?changes=1&since={v.pk}")
+        ch = page.context["changes"]                 # a version you pick is compared even if nothing changed
+        self.assertEqual((ch["added"], ch["changed"], ch["removed_count"]), (0, 0, 0))
+        from .views import _deck_entries
+        entries = _deck_entries(Deck.objects.prefetch_related("entries__card").get(pk=deck.pk))
+        self.assertEqual(versions.diff(entries, v)["by_entry"], {})
+        ea.quantity = 2
+        ea.save()
+        entries = _deck_entries(Deck.objects.prefetch_related("entries__card").get(pk=deck.pk))
+        d = versions.diff(entries, v)
+        self.assertEqual(list(d["by_entry"].values()), [{"status": "more", "delta": 1, "was": 2}])
