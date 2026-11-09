@@ -263,3 +263,35 @@ def got_want(item, quantity, finish=None, price_paid=None):
         item.save()
     record_collection_value()
     return owned
+
+
+@transaction.atomic
+def collect_card(card, quantity, finish="nonfoil"):
+    """You got copies of a card you already have saved (e.g. from a deck list): add them to
+    the collection and take them off the want list. Returns (collection_item, wants_filled)."""
+    from django.db.models import Q
+
+    from .models import WantItem
+
+    finish = finish if finish in dict(CollectionItem.FINISH_CHOICES) else "nonfoil"
+    quantity = max(1, min(int(quantity), 999))
+    item, created = CollectionItem.objects.get_or_create(card=card, finish=finish, defaults={"quantity": quantity})
+    if not created:
+        item.quantity += quantity
+        item.save()
+    left, filled = quantity, 0
+    wants = (WantItem.objects.filter(Q(card=card) | Q(any_printing=True, card__name=card.name))
+             .filter(Q(finish="any") | Q(finish=finish)).order_by("priority", "added_at"))
+    for want in wants:
+        if left <= 0:
+            break
+        take = min(left, want.quantity)
+        if take >= want.quantity:
+            want.delete()
+        else:
+            want.quantity -= take
+            want.save(update_fields=["quantity"])
+        left -= take
+        filled += take
+    record_collection_value()
+    return item, filled

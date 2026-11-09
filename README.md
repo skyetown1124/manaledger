@@ -101,6 +101,12 @@ Open http://127.0.0.1:8000/ and use **Add Cards** to search for your first card.
   the deck list in every view (Stacks, Text and Table) and stays in view as
   you scroll; on a phone it moves below the list, and **＋ Add cards** jumps
   to it. Cards you don't own enough of are marked "Need".
+- **Adding deck cards to your collection**: got a card for a deck? Add it to
+  your collection straight from the deck list: **Add to collection** under the
+  card in Table view (pick how many and the finish), the **✓** button on a card
+  in Stacks view, the **Got … Add to collection** box beside the card preview in
+  Text view, or **Got N** in "Cards you need". It fills in the copies you're
+  short (or 1), and takes them off your want list if the card is on it.
 - **Deleting decks**: use **Delete deck…** in a deck tile's ⋮ menu, or press
   **Select decks** on the Decks page, tick several (click the tiles) and press
   **Delete**. You're always asked to confirm. Your cards stay in your library,

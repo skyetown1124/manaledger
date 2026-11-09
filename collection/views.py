@@ -460,6 +460,9 @@ def _deck_entries(deck, owned=None, by_name=None):
             "game_changer": c.game_changer, "proxies": min(entry.proxies, entry.quantity),
             "power": c.power, "toughness": c.toughness, "loyalty": c.loyalty,
         })
+        owned_here = rows[-1]["owned"]
+        rows[-1]["short"] = 0 if c.is_basic_land else max(0, entry.quantity - owned_here)
+        rows[-1]["collect_qty"] = rows[-1]["short"] or 1
     return rows
 
 
@@ -1062,6 +1065,28 @@ def deck_collect_needed(request, pk):
         services.record_collection_value()
     messages.success(request, f"Added {added} card{'s' if added != 1 else ''} to your collection. {deck.name} is complete.")
     return redirect("collection:deck", pk=deck.pk)
+
+
+@require_POST
+def deck_card_collect(request, pk):
+    """Add copies of one of the deck's cards to your collection (from the deck list)."""
+    deck = get_object_or_404(Deck, pk=pk)
+    entry = DeckCard.objects.select_related("card").filter(
+        deck=deck, card_id=_positive_int(request.POST.get("card_id"), 0)).first()
+    card = entry.card if entry else None
+    if card is None:
+        messages.error(request, "That card isn't in this deck.")
+        return _back(request, reverse("collection:deck", args=[deck.pk]))
+    qty = max(1, min(999, _positive_int(request.POST.get("quantity"), 1)))
+    finish = request.POST.get("finish", "nonfoil")
+    item, filled = services.collect_card(card, qty, finish)
+    total = sum(CollectionItem.objects.filter(card__name=card.name).values_list("quantity", flat=True))
+    msg = (f"Added {qty} {card.name} ({item.get_finish_display().lower()}) to your collection. "
+           f"You own {total} now.")
+    if filled:
+        msg += f" Took {filled} off your want list."
+    messages.success(request, msg)
+    return _back(request, reverse("collection:deck", args=[deck.pk]))
 
 
 def precon_list(request):

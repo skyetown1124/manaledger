@@ -33,6 +33,10 @@
                 {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><input type="hidden" name="card_id" value="{{ e.card_id }}">
                 <button type="submit" title="Use as deck cover" aria-label="Use {{ e.name }} as the deck cover">★</button>
               </form>
+              {% if not e.is_basic %}<form method="post" action="{% url 'collection:deck_card_collect' deck.pk %}">
+                {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><input type="hidden" name="card_id" value="{{ e.card_id }}"><input type="hidden" name="quantity" value="{{ e.collect_qty }}">
+                <button type="submit" class="stk-collect" title="Add {{ e.collect_qty }} to my collection{% if e.short %} (you're {{ e.short }} short){% endif %}" aria-label="Add {{ e.collect_qty }} {{ e.name }} to my collection">✓</button>
+              </form>{% endif %}
               <a href="{% url 'collection:card' e.card_id %}" title="Card details, rulings and prices" aria-label="Details for {{ e.name }}">i</a>
             </div>
             {% if e.price %}<span class="stk-price">{{ e.price|money }}</span>{% endif %}
@@ -42,4 +46,4 @@
     </section>
   {% endfor %}
 </div>
-<p class="note">Hover a card (or tab to it) to see all of it and its buttons: <strong>+</strong> / <strong>−</strong> change copies, <strong>★</strong> makes it the deck cover, <strong>i</strong> opens its details. "Need" marks cards you don't own enough of. Switch to <a href="?view=table">Table</a> to move cards between sections or mark proxies.</p>
+<p class="note">Hover a card (or tab to it) to see all of it and its buttons: <strong>+</strong> / <strong>−</strong> change copies, <strong>★</strong> makes it the deck cover, <strong>✓</strong> adds it to your collection (the copies you're missing, or 1), <strong>i</strong> opens its details. "Need" marks cards you don't own enough of. Switch to <a href="?view=table">Table</a> to move cards between sections or mark proxies.</p>

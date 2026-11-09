@@ -955,3 +955,11 @@ body.selecting-decks .ad-cover { cursor: pointer; }
 .confirm-dialog { width: min(460px, calc(100vw - 32px)); }
 .confirm-dialog p { margin: 0; line-height: 1.5; }
 .confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+
+/* Add a deck card to your collection */
+.collect-form { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0 2px; }
+.collect-form .qty-small { width: 56px; }
+.collect-form select.compact { width: auto; }
+.need-actions { display: inline-flex; gap: 6px; }
+.need-actions form { margin: 0; }
+.stk-tools .stk-collect { color: #9be7a5; }

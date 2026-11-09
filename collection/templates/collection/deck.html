@@ -195,6 +195,7 @@
                     <div class="muted small">
                       {% if e.is_basic %}Basic land{% else %}You own {{ e.owned }}{% endif %}{% if e.proxies %} · <span class="proxy-badge">{% if e.quantity > 1 %}{{ e.proxies }} prox{{ e.proxies|pluralize:"y,ies" }}{% else %}Proxy{% endif %}</span>{% endif %}{% if e.elsewhere %} · also in {{ e.elsewhere|join:", " }}{% endif %}
                     </div>
+                    {% if not e.is_basic %}{% include "collection/_collect_form.html" %}{% endif %}
                     {% if not e.is_basic %}<div class="proxy-control small">
                       {% if e.quantity == 1 %}
                         <label class="check" title="Play a proxy (stand-in) instead of the real card"><input type="checkbox" name="proxy" value="1" form="entry-{{ e.id }}" {% if e.proxies %}checked{% endif %} onchange="this.form.requestSubmit()"> Proxy</label>
@@ -379,10 +380,16 @@
               <td class="num">{{ n.price|money }}</td>
               <td class="num strong">{{ n.cost|money }}</td>
               <td class="actions">
+<span class="need-actions">
+                <form method="post" action="{% url 'collection:deck_card_collect' deck.pk %}">
+                  {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}#needs"><input type="hidden" name="card_id" value="{{ n.card_id }}"><input type="hidden" name="quantity" value="{{ n.need }}">
+                  <button type="submit" class="btn small" title="You got {{ n.need }}: add {{ n.need }} non-foil {{ n.name }} to your collection">Got {{ n.need }}</button>
+                </form>
                 <form method="post" action="{% url 'collection:deck_proxy' deck.pk %}">
                   {% csrf_token %}<input type="hidden" name="name" value="{{ n.name }}">
                   <button type="submit" class="btn small ghost" title="Play a proxy instead of buying it">Proxy</button>
                 </form>
+                </span>
               </td>
             </tr>
           {% endfor %}
