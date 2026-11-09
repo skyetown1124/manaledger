@@ -363,3 +363,15 @@ class DeletedDeck(models.Model):
 
     def __str__(self):
         return f"{self.name} (deleted {self.deleted_at:%Y-%m-%d})"
+
+
+class EdhrecPage(models.Model):
+    """EDHREC's card list for one commander (or partner pair), saved so the page loads fast."""
+
+    slug = models.CharField(max_length=200, unique=True)
+    cards = models.JSONField(default=list, help_text="[{name, scryfall_id, image_version, synergy, num_decks, potential_decks, list}]")
+    num_decks = models.PositiveIntegerField(default=0)
+    fetched_at = models.DateTimeField()
+
+    def __str__(self):
+        return self.slug

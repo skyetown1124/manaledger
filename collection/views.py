@@ -14,7 +14,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from . import decks as deckrules
-from . import archidekt, backup, brackets, importer, suggest, versions, ocr, precons, rules, scryfall, search, services, spellbook, trash
+from . import archidekt, backup, brackets, edhrec, importer, suggest, versions, ocr, precons, rules, scryfall, search, services, spellbook, trash
 from .models import (Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, DeckVersion, DeletedDeck, GlossaryTerm, LinkedProfile, Precon, PriceSnapshot, WantItem,
                      Rule, RulesEdition)
 from .stats import build_dashboard
@@ -1354,8 +1354,97 @@ def deck_suggestions(request, pk):
                                  intended=deck.target_bracket)
     return render(request, "collection/suggestions.html", {
         "active_tab": "decks", "deck": deck, "s": result, "bracket_choices": Deck.BRACKET_CHOICES,
-        "default_board": "main",
+        "default_board": "main", "edh": _edhrec_block(request, deck, entries),
     })
+
+
+def _edhrec_block(request, deck, entries):
+    """EDHREC's top 20 for the deck's commander, each marked in the deck / in your collection."""
+    commanders = sorted({e["name"] for e in entries if e["board"] == "commander"})
+    if deck.format != "commander" or not commanders:
+        return None
+    sort = request.GET.get("edh", "inclusion")
+    sort = sort if sort in edhrec.SORTS else "inclusion"
+    block = {"commanders": commanders, "sort": sort, "sorts": edhrec.SORTS, "error": None, "cards": [],
+             "url": edhrec.PAGE_URL.format(slug=edhrec.slug(commanders))}
+    try:
+        page = edhrec.page(commanders, refresh=request.GET.get("edh_refresh") == "1")
+    except edhrec.EdhrecError as exc:
+        block["error"] = str(exc)
+        return block
+    block.update({"fetched_at": page.fetched_at, "num_decks": page.num_decks})
+    in_deck = {}
+    for e in entries:
+        row = in_deck.setdefault(e["name"], {"quantity": 0, "proxies": 0})
+        row["quantity"] += e["quantity"]
+        row["proxies"] += e["proxies"]
+    owned_by_name = _owned_by_name()
+    owned_ids = {}
+    for card_id, name in Card.objects.filter(items__isnull=False).values_list("id", "name").order_by("-id"):
+        owned_ids.setdefault(name, card_id)
+    others = [c for c in page.cards if c["name"] not in commanders]
+    for c in edhrec.top(others, 20, sort):
+        c["in_deck"] = in_deck.get(c["name"])
+        c["owned"] = owned_by_name.get(c["name"], 0)
+        c["owned_card_id"] = owned_ids.get(c["name"])
+        block["cards"].append(c)
+    block["owned_count"] = sum(1 for c in block["cards"] if c["owned"])
+    block["in_deck_count"] = sum(1 for c in block["cards"] if c["in_deck"])
+    return block
+
+
+def _card_for(scryfall_id, name):
+    """Save (or refresh) a card from Scryfall by id, falling back to its name."""
+    try:
+        data = scryfall.get_card(scryfall_id) if scryfall_id else scryfall.named(name)
+    except scryfall.ScryfallError:
+        if not name:
+            raise
+        data = scryfall.named(name)
+    return services.save_card(data)
+
+
+@require_POST
+def deck_edhrec_add(request, pk):
+    """From the EDHREC list: add a card to your collection, or put it in the deck as a proxy."""
+    deck = get_object_or_404(Deck, pk=pk)
+    back = reverse("collection:deck_suggestions", args=[deck.pk]) + "#edhrec"
+    action = request.POST.get("action")
+    name = request.POST.get("name", "").strip()
+    try:
+        card = _card_for(request.POST.get("scryfall_id", "").strip(), name)
+    except scryfall.ScryfallError as exc:
+        messages.error(request, f"Couldn't find {name or 'that card'} on Scryfall. {exc}")
+        return _back(request, back)
+    if action == "collect":
+        item, created = CollectionItem.objects.get_or_create(card=card, finish="nonfoil", defaults={"quantity": 1})
+        if not created:
+            item.quantity += 1
+            item.save(update_fields=["quantity"])
+        filled = services.fill_wants(card, 1, "nonfoil")
+        services.record_collection_value()
+        msg = f"Added {card.name} ({card.set_code.upper()}) to your collection."
+        if filled:
+            msg += " Took it off your want list."
+        messages.success(request, msg + " Use Add to deck to put it in this deck.")
+    elif action == "proxy":
+        try:
+            qty, note = check_deck_rules(deck, card, "main", 1)
+        except RuleError as exc:
+            messages.error(request, str(exc))
+            return _back(request, back)
+        versions.checkpoint(deck)
+        entry, created = DeckCard.objects.get_or_create(deck=deck, card=card, board="main",
+                                                        defaults={"quantity": qty, "proxies": qty})
+        if not created:
+            entry.quantity += qty
+            entry.proxies = min(entry.quantity, entry.proxies + qty)
+            entry.save(update_fields=["quantity", "proxies"])
+        deck.save(update_fields=["updated_at"])
+        messages.success(request, f"Added {card.name} to {deck.name} as a proxy.{note}")
+    else:
+        messages.error(request, "Unknown action.")
+    return _back(request, back)
 
 
 def commander_ideas(request):

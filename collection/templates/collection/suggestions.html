@@ -29,6 +29,8 @@
   {% if not deck.entries.exists %}<div class="message">This deck is empty. {% if deck.format == "commander" %}Add a commander first so suggestions can match its colors.{% endif %}</div>{% endif %}
 </section>
 
+{% if edh %}{% include "collection/_edhrec_top.html" %}{% endif %}
+
 {% if s.budget %}
 <section class="kpis">
   <div class="kpi {% if s.swaps %}kpi-warn{% else %}kpi-good{% endif %}">

@@ -108,6 +108,12 @@ Open http://127.0.0.1:8000/ and use **Add Cards** to search for your first card.
   it in the deck as well. If your library search finds nothing, the "Not here?"
   link switches to All cards for you. Want-list entries for the card are
   reduced automatically.
+- **EDHREC top 20**: a Commander deck's **Suggestions** page lists the 20
+  cards EDHREC shows most for its commander (**Most played**, or **Highest
+  synergy**). Each says whether it's in the deck or your collection. Cards you
+  own have **Add to deck**; cards you don't have **Add to collection** and
+  **Proxy** (puts it in the deck as a proxy). The list is saved for a week;
+  press refresh for a new one.
 - **Deleting decks**: use **Delete deck…** in a deck tile's ⋮ menu, or press
   **Select decks** on the Decks page, tick several (click the tiles) and press
   **Delete**. You're always asked to confirm. Your cards stay in your library,

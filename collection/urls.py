@@ -47,6 +47,7 @@ urlpatterns = [
     path("decks/<int:pk>/settings/", views.deck_update, name="deck_update"),
     path("decks/<int:pk>/delete/", views.deck_delete, name="deck_delete"),
     path("decks/delete/", views.deck_delete_many, name="deck_delete_many"),
+    path("decks/<int:pk>/edhrec-add/", views.deck_edhrec_add, name="deck_edhrec_add"),
     path("decks/<int:pk>/library-collect/", views.deck_library_collect, name="deck_library_collect"),
     path("decks/deleted/<int:pk>/restore/", views.deck_undelete, name="deck_undelete"),
     path("decks/deleted/<int:pk>/purge/", views.deck_purge, name="deck_purge"),

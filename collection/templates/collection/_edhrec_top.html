@@ -1,0 +1,63 @@
+{% load money cards %}
+<section class="panel" id="edhrec">
+  <div class="section-head">
+    <span>EDHREC top 20 for {{ edh.commanders|join:" + " }}</span>
+    <span class="spacer"></span>
+    <nav class="view-switch" aria-label="Rank by">
+      {% for value, label in edh.sorts.items %}<a href="?edh={{ value }}#edhrec" class="{% if value == edh.sort %}active{% endif %}" {% if value == edh.sort %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+    </nav>
+    <a class="btn small ghost" href="{{ edh.url }}" target="_blank" rel="noopener">Open on EDHREC</a>
+  </div>
+  {% if edh.error %}
+    <div class="message error">{{ edh.error }}</div>
+  {% else %}
+    <p class="note">
+      {% if edh.sort == "synergy" %}The cards EDHREC says are most tied to this commander: played here far more than in other decks of its colors.{% else %}The cards played in the most {{ edh.commanders|join:" + " }} decks on EDHREC{% if edh.num_decks %} ({{ edh.num_decks|floatformat:"0g" }} decks){% endif %}.{% endif %}
+      You have <strong>{{ edh.owned_count }}</strong> of these in your collection and <strong>{{ edh.in_deck_count }}</strong> in this deck.
+      <span class="muted">Updated {{ edh.fetched_at|timesince|cut:","|truncatewords:2|cut:" …" }} ago · <a href="?edh={{ edh.sort }}&amp;edh_refresh=1#edhrec">refresh</a></span>
+    </p>
+    <ol class="edh-grid">
+      {% for c in edh.cards %}
+        <li class="edh-card{% if c.in_deck %} in-deck{% elif c.owned %} owned{% endif %}">
+          <a class="edh-img" href="{{ c.url }}" target="_blank" rel="noopener" title="{{ c.name }} on EDHREC">
+            {% if c.image %}<img src="{{ c.image }}" alt="{{ c.name }}" loading="lazy" onerror="this.remove()">{% endif %}
+            <span class="edh-rank">{{ forloop.counter }}</span>
+          </a>
+          <div class="edh-body">
+            <strong class="edh-name">{{ c.name }}</strong>
+            <div class="small muted">{{ c.inclusion }}% of decks · {% if c.synergy_pct >= 0 %}+{% endif %}{{ c.synergy_pct }}% synergy</div>
+            <div class="small muted">{{ c.list }}</div>
+            <div class="edh-status">
+              {% if c.in_deck %}
+                <span class="edh-tag in-deck">✓ In this deck{% if c.in_deck.proxies %} (proxy){% endif %}</span>
+              {% elif c.owned %}
+                <span class="edh-tag owned">In your collection ({{ c.owned }})</span>
+              {% else %}
+                <span class="edh-tag missing">Not in your collection</span>
+              {% endif %}
+            </div>
+            {% if not c.in_deck %}
+              <div class="edh-actions">
+                {% if c.owned and c.owned_card_id %}
+                  <form method="post" action="{% url 'collection:deck_add' deck.pk %}">
+                    {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}#edhrec">
+                    <input type="hidden" name="card_id" value="{{ c.owned_card_id }}"><input type="hidden" name="board" value="main">
+                    <button type="submit" class="btn small primary">Add to deck</button>
+                  </form>
+                {% else %}
+                  <form method="post" action="{% url 'collection:deck_edhrec_add' deck.pk %}">
+                    {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}#edhrec">
+                    <input type="hidden" name="name" value="{{ c.name }}"><input type="hidden" name="scryfall_id" value="{{ c.scryfall_id }}">
+                    <button type="submit" class="btn small primary" name="action" value="collect" title="You got one: add 1 to your collection">Add to collection</button>
+                    <button type="submit" class="btn small" name="action" value="proxy" title="Put it in this deck as a proxy">Proxy</button>
+                  </form>
+                {% endif %}
+              </div>
+            {% endif %}
+          </div>
+        </li>
+      {% endfor %}
+    </ol>
+    <p class="note small">Data from <a href="{{ edh.url }}" target="_blank" rel="noopener">EDHREC</a>, saved for a week. "% of decks" is how many {{ edh.commanders|join:" + " }} decks play the card; synergy is how much more often than in other decks of the same colors.</p>
+  {% endif %}
+</section>

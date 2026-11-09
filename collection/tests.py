@@ -1646,6 +1646,11 @@ class SuggestLogicTests(TestCase):
 
 
 class SuggestViewTests(TestCase):
+    def setUp(self):
+        patcher = mock.patch("collection.edhrec._get", return_value=None)  # no network in tests
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_pages_and_start_deck(self):
         boss = make_card("Golgari Boss", type_line="Legendary Creature — Elf", color_identity="BG")
         signet = make_card("Golgari Signet", type_line="Artifact", color_identity="BG",
@@ -2199,3 +2204,79 @@ class LibraryAllCardsTests(TestCase):
             self.client.post(url, {"scryfall_id": "cmm-410", "quantity": 3, "also_deck": "1", "board": "main"})
         self.assertEqual(CollectionItem.objects.get(card__scryfall_id="cmm-410").quantity, 3)
         self.assertLessEqual(sum(deck.entries.values_list("quantity", flat=True)), 1)  # singleton
+
+
+class EdhrecTests(TestCase):
+    PAGE = {"container": {"json_dict": {"cardlists": [
+        {"header": "New Cards", "tag": "newcards", "cardviews": [
+            {"name": "Brand New", "id": "n1", "synergy": 0.9, "num_decks": 5, "potential_decks": 1000}]},
+        {"header": "Top Cards", "tag": "topcards", "cardviews": [
+            {"name": "Sol Ring", "id": "abc-ring", "sanitized": "sol-ring", "synergy": 0.01, "num_decks": 900, "potential_decks": 1000},
+            {"name": "Arcane Signet", "id": "abc-signet", "sanitized": "arcane-signet", "synergy": 0.02, "num_decks": 800, "potential_decks": 1000}]},
+        {"header": "High Synergy Cards", "tag": "highsynergycards", "cardviews": [
+            {"name": "Gray Merchant of Asphodel", "id": "abc-gary", "sanitized": "gray-merchant-of-asphodel", "synergy": 0.6, "num_decks": 400, "potential_decks": 1000},
+            {"name": "Sol Ring", "id": "abc-ring", "synergy": 0.01, "num_decks": 900, "potential_decks": 1000}]},
+    ]}}}
+
+    def setUp(self):
+        from . import edhrec
+        self.edhrec = edhrec
+        self.sheoldred = make_card("Sheoldred, the Apocalypse", type_line="Legendary Creature — Phyrexian Praetor", color_identity="B")
+        self.ring = make_card("Sol Ring")
+        self.signet = make_card("Arcane Signet")
+        CollectionItem.objects.create(card=self.ring, quantity=1)
+        CollectionItem.objects.create(card=self.signet, quantity=2)
+        self.deck = Deck.objects.create(name="Sheo", format="commander")
+        DeckCard.objects.create(deck=self.deck, card=self.sheoldred, board="commander")
+        DeckCard.objects.create(deck=self.deck, card=self.ring, board="main")
+        self.url = reverse("collection:deck_suggestions", args=[self.deck.pk])
+
+    def test_slug(self):
+        self.assertEqual(self.edhrec.slug(["Atraxa, Praetors' Voice"]), "atraxa-praetors-voice")
+        self.assertEqual(self.edhrec.slug(["Tymna the Weaver", "Thrasios, Triton Hero"]), "thrasios-triton-hero-tymna-the-weaver")
+        self.assertEqual(self.edhrec.slug(["Esika, God of the Tree // The Prismatic Bridge"]), "esika-god-of-the-tree")
+
+    def test_top_list_marks_deck_and_collection(self):
+        with mock.patch.object(self.edhrec, "_get", return_value=self.PAGE) as get:
+            page = self.client.get(self.url)
+            self.client.get(self.url)  # saved: not fetched again
+        get.assert_called_once()
+        self.assertIn("sheoldred-the-apocalypse", get.call_args[0][0])
+        cards = page.context["edh"]["cards"]
+        self.assertEqual([c["name"] for c in cards], ["Sol Ring", "Arcane Signet", "Gray Merchant of Asphodel"])
+        self.assertEqual(cards[0]["inclusion"], 90)
+        self.assertContains(page, "✓ In this deck")
+        self.assertContains(page, "In your collection (2)")
+        self.assertContains(page, "Not in your collection")
+        self.assertContains(page, "Add to deck")
+        self.assertContains(page, 'value="proxy"')
+        self.assertNotContains(page, "Brand New")
+        by_synergy = self.client.get(self.url + "?edh=synergy").context["edh"]["cards"]
+        self.assertEqual(by_synergy[0]["name"], "Gray Merchant of Asphodel")
+
+    def test_unreachable_edhrec_shows_a_message(self):
+        with mock.patch.object(self.edhrec, "_get", side_effect=self.edhrec.EdhrecError("Couldn't reach EDHREC: offline")):
+            page = self.client.get(self.url)
+        self.assertContains(page, "Couldn&#x27;t reach EDHREC")
+
+    def test_add_to_collection_and_proxy(self):
+        gary = fake_card("Gray Merchant of Asphodel", "c19", "120")
+        add = reverse("collection:deck_edhrec_add", args=[self.deck.pk])
+        with mock.patch.object(scryfall, "get_card", return_value=gary):
+            self.client.post(add, {"action": "collect", "name": gary["name"], "scryfall_id": "c19-120"})
+        self.assertEqual(CollectionItem.objects.get(card__name="Gray Merchant of Asphodel").quantity, 1)
+        self.assertFalse(self.deck.entries.filter(card__name="Gray Merchant of Asphodel").exists())
+
+        CollectionItem.objects.filter(card__name="Gray Merchant of Asphodel").delete()
+        with mock.patch.object(scryfall, "get_card", return_value=gary):
+            self.client.post(add, {"action": "proxy", "name": gary["name"], "scryfall_id": "c19-120"})
+        entry = self.deck.entries.get(card__name="Gray Merchant of Asphodel")
+        self.assertEqual((entry.quantity, entry.proxies, entry.board), (1, 1, "main"))
+        self.assertFalse(CollectionItem.objects.filter(card__name="Gray Merchant of Asphodel").exists())
+
+    def test_not_shown_for_other_formats(self):
+        deck = Deck.objects.create(name="Modern", format="modern")
+        with mock.patch.object(self.edhrec, "_get") as get:
+            page = self.client.get(reverse("collection:deck_suggestions", args=[deck.pk]))
+        get.assert_not_called()
+        self.assertIsNone(page.context["edh"])
