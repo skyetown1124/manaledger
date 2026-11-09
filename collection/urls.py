@@ -36,6 +36,7 @@ urlpatterns = [
     path("decks/<int:pk>/versions/save/", views.deck_version_save, name="deck_version_save"),
     path("decks/<int:pk>/versions/<int:version_id>/restore/", views.deck_version_restore, name="deck_version_restore"),
     path("decks/<int:pk>/put-back/", views.deck_put_back, name="deck_put_back"),
+    path("decks/<int:pk>/trim/", views.deck_trim, name="deck_trim"),
     path("decks/<int:pk>/collect/", views.deck_collect_needed, name="deck_collect_needed"),
     path("decks/<int:pk>/want/", views.deck_want_needed, name="deck_want_needed"),
     path("decks/<int:pk>/proxy/", views.deck_proxy, name="deck_proxy"),

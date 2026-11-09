@@ -1576,3 +1576,29 @@ def deck_put_back(request, pk):
     deck.save(update_fields=["updated_at"])
     messages.success(request, f"Put {card.name} back in {deck.name}.")
     return _back(request, reverse("collection:deck", args=[deck.pk]))
+
+
+
+@require_POST
+def deck_trim(request, pk):
+    """Remove the cards whose Keep box was unticked in the table view.
+
+    Only cards that were on the page ("shown") can be removed, so a page that didn't
+    send its checkboxes can never empty the deck. A version is saved first."""
+    deck = get_object_or_404(Deck, pk=pk)
+    shown = {int(x) for x in request.POST.getlist("shown") if x.isdigit()}
+    keep = {int(x) for x in request.POST.getlist("keep") if x.isdigit()}
+    gone = deck.entries.filter(pk__in=shown - keep).select_related("card")
+    cards = list(gone)
+    if not cards:
+        messages.error(request, "Nothing to remove: every card is still ticked Keep.")
+        return _back(request, reverse("collection:deck", args=[deck.pk]))
+    copies = sum(e.quantity for e in cards)
+    with transaction.atomic():
+        versions.checkpoint(deck, f"Before removing {copies} card{'s' if copies != 1 else ''}")
+        gone.delete()
+        deck.save(update_fields=["updated_at"])
+    names = ", ".join(e.card.name for e in cards[:5]) + (f" and {len(cards) - 5} more" if len(cards) > 5 else "")
+    messages.success(request, f"Removed {copies} card{'s' if copies != 1 else ''} ({names}). "
+                              "Changed your mind? Versions → Restore the version saved just before.")
+    return _back(request, reverse("collection:deck", args=[deck.pk]) + "?view=table")

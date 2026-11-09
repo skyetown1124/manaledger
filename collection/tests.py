@@ -2003,3 +2003,37 @@ class LibraryLiveSearchTests(TestCase):
         self.assertIn(f'name="next" value="{url}?view=table&amp;q=bolt"', html)   # no partial flag in the way back
         full = self.client.get(url + "?view=table&q=bolt")
         self.assertContains(full, 'id="library-results"')
+
+
+class DeckTrimTests(TestCase):
+    def setUp(self):
+        self.deck = Deck.objects.create(name="Trim", format="casual")
+        self.entries = [DeckCard.objects.create(deck=self.deck, card=make_card(n), quantity=q)
+                        for n, q in (("Keep Me", 1), ("Cut Me", 2), ("Cut Me Too", 1), ("Not Shown", 1))]
+        self.url = reverse("collection:deck_trim", args=[self.deck.pk])
+
+    def test_removes_only_unticked_cards_that_were_shown(self):
+        keep, cut1, cut2, hidden = self.entries
+        self.client.get(reverse("collection:deck", args=[self.deck.pk]))       # baseline version
+        shown = [keep.pk, cut1.pk, cut2.pk]                                    # "Not Shown" wasn't on the page
+        page = self.client.post(self.url, {"shown": shown, "keep": [keep.pk]}, follow=True)
+        self.assertContains(page, "Removed 3 cards")
+        self.assertEqual(sorted(self.deck.entries.values_list("card__name", flat=True)), ["Keep Me", "Not Shown"])
+        self.assertTrue(self.deck.versions.filter(label="Before removing 3 cards").exists())
+
+    def test_nothing_unticked_or_nothing_sent_removes_nothing(self):
+        ids = [e.pk for e in self.entries]
+        self.client.post(self.url, {"shown": ids, "keep": ids})
+        self.client.post(self.url, {})                                       # a page that sent no boxes
+        self.assertEqual(self.deck.entries.count(), 4)
+
+    def test_other_decks_are_safe(self):
+        other = Deck.objects.create(name="Other", format="casual")
+        theirs = DeckCard.objects.create(deck=other, card=make_card("Theirs"), quantity=1)
+        self.client.post(self.url, {"shown": [theirs.pk]})
+        self.assertTrue(DeckCard.objects.filter(pk=theirs.pk).exists())
+
+    def test_table_view_has_keep_boxes(self):
+        page = self.client.get(reverse("collection:deck", args=[self.deck.pk]) + "?view=table")
+        self.assertContains(page, 'name="keep"', count=4)
+        self.assertContains(page, "Remove unticked cards")

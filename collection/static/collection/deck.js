@@ -122,3 +122,56 @@
     cb.addEventListener("change", search);
   });
 })();
+
+// Keep checkboxes (table view): live count of what the deck will be after removing
+// the unticked cards. Unticked boxes are remembered in this browser until you remove them.
+(function () {
+  const form = document.getElementById("keep-form");
+  const bar = document.getElementById("keep-bar");
+  if (!form || !bar) return;
+  const boxes = Array.from(document.querySelectorAll('input[name="keep"][form="keep-form"]'));
+  const count = document.getElementById("keep-count");
+  const submit = document.getElementById("keep-submit");
+  const storeKey = "manaledger.keep." + location.pathname;
+
+  function load() {
+    try { return new Set(JSON.parse(localStorage.getItem(storeKey) || "[]")); } catch (e) { return new Set(); }
+  }
+  function save() {
+    const off = boxes.filter((b) => !b.checked).map((b) => b.value);
+    try { off.length ? localStorage.setItem(storeKey, JSON.stringify(off)) : localStorage.removeItem(storeKey); } catch (e) { /* not saved */ }
+  }
+  function update() {
+    let total = 0, kept = 0, cutCards = 0, cutCopies = 0;
+    boxes.forEach(function (b) {
+      const row = b.closest("tr");
+      const qty = parseInt(row.dataset.qty, 10) || 0;
+      if (row.dataset.board !== "side") total += qty;
+      if (b.checked) { if (row.dataset.board !== "side") kept += qty; }
+      else { cutCards += 1; cutCopies += qty; }
+      row.classList.toggle("cut", !b.checked);
+    });
+    count.textContent = cutCards
+      ? `${total} cards → ${kept} after removing ${cutCopies} (${cutCards} unticked)`
+      : `${total} cards · untick Keep on cards to cut`;
+    submit.disabled = cutCards === 0;
+    submit.textContent = cutCards ? `Remove ${cutCopies} unticked card${cutCopies === 1 ? "" : "s"}` : "Remove unticked cards";
+  }
+
+  const remembered = load();
+  boxes.forEach(function (b) {
+    if (remembered.has(b.value)) b.checked = false;
+    b.addEventListener("change", function () { save(); update(); });
+  });
+  bar.querySelectorAll("[data-keep]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      const on = btn.dataset.keep === "all";
+      boxes.forEach((b) => { b.checked = on; });
+      save(); update();
+    });
+  });
+  form.addEventListener("submit", function () {
+    try { localStorage.removeItem(storeKey); } catch (e) { /* fine */ }
+  });
+  update();
+})();

@@ -875,3 +875,21 @@ td.actions form + details, td.actions details + form { margin-top: 4px; }
 .versions-list li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 13px; }
 .versions-list li > div { flex: 1; }
 .restore-form { display: flex; align-items: center; gap: 6px; }
+
+/* ---- Keep / trim (table view) ---- */
+.keep-cell { width: 64px; text-align: center; }
+.keep-check { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; color: var(--muted); cursor: pointer; }
+.keep-check input { width: 18px; height: 18px; accent-color: var(--up); cursor: pointer; }
+.deck-table tr.cut td { opacity: .45; }
+.deck-table tr.cut td.keep-cell { opacity: 1; }
+.deck-table tr.cut .card-name a { text-decoration: line-through; }
+.deck-table tr.cut .keep-check { color: var(--down); }
+.keep-bar { position: sticky; bottom: 0; z-index: 15; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px;
+  padding: 10px 12px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 -6px 18px rgba(0,0,0,.35); }
+.keep-count { font-weight: 600; font-size: 14px; }
+.btn.danger { background: var(--down); border-color: var(--down); color: #fff; }
+.btn.danger:disabled { opacity: .45; cursor: not-allowed; }
+.keep-help { margin-top: 0; }
+.deck-table td.keep-cell { width: 40px; padding-left: 2px; padding-right: 2px; }
+.keep-check span { font-size: 10px; }
+.deck-table .qty-cell .qty { width: 54px; }

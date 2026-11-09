@@ -208,7 +208,10 @@ your choice):
   it in the preview on the right; click it to keep it there and change copies,
   remove it, or make it the cover.
 - **Table**: the editing view, for moving cards between sections and marking
-  proxies.
+  proxies. Each card has a **Keep** box: untick the cards you're cutting and the
+  bar at the bottom shows the deck size after removing them ("117 cards → 100"),
+  then press **Remove unticked cards**. Unticked boxes are remembered in your
+  browser until you remove them, and a version is saved first so you can undo it.
 
 **Show changes.** Tick **Show changes** above the deck list to see what's
 different from an earlier version, in any view: cards added are marked **New**,
