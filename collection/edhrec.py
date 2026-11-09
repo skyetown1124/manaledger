@@ -16,6 +16,10 @@ MAX_AGE = timedelta(days=7)
 SORTS = {"inclusion": "Most played", "synergy": "Highest synergy"}
 
 
+BASICS = {"Plains", "Island", "Swamp", "Mountain", "Forest", "Wastes"}
+BASICS |= {"Snow-Covered " + b for b in BASICS}
+
+
 class EdhrecError(Exception):
     pass
 
@@ -65,8 +69,8 @@ def parse(data):
             continue  # recent printings: not enough decks yet to rank fairly
         for c in cardlist.get("cardviews") or []:
             name = c.get("name")
-            if not name or name in seen:
-                continue
+            if not name or name in seen or name in BASICS:
+                continue  # basic lands aren't worth a top-20 spot
             seen.add(name)
             cards.append({
                 "name": name, "scryfall_id": c.get("id") or "", "image_version": c.get("image_version") or "",
@@ -112,6 +116,8 @@ def top(cards, n=20, sort="inclusion"):
     """The n highest-rated cards: most played (share of the commander's decks) or highest synergy."""
     rows = []
     for c in cards:
+        if c["name"] in BASICS:
+            continue
         row = dict(c)
         row["inclusion"] = round(100 * c["num_decks"] / c["potential_decks"]) if c["potential_decks"] else 0
         row["synergy_pct"] = round(100 * c["synergy"])

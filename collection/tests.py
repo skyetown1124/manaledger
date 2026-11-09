@@ -2211,6 +2211,7 @@ class EdhrecTests(TestCase):
         {"header": "New Cards", "tag": "newcards", "cardviews": [
             {"name": "Brand New", "id": "n1", "synergy": 0.9, "num_decks": 5, "potential_decks": 1000}]},
         {"header": "Top Cards", "tag": "topcards", "cardviews": [
+            {"name": "Swamp", "id": "abc-swamp", "synergy": 0, "num_decks": 990, "potential_decks": 1000},
             {"name": "Sol Ring", "id": "abc-ring", "sanitized": "sol-ring", "synergy": 0.01, "num_decks": 900, "potential_decks": 1000},
             {"name": "Arcane Signet", "id": "abc-signet", "sanitized": "arcane-signet", "synergy": 0.02, "num_decks": 800, "potential_decks": 1000}]},
         {"header": "High Synergy Cards", "tag": "highsynergycards", "cardviews": [
