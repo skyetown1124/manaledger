@@ -2,14 +2,16 @@
   "name": "Mana Ledger",
   "image": "mcr.microsoft.com/devcontainers/python:3.12",
   "postCreateCommand": "sudo apt-get update && sudo apt-get install -y tesseract-ocr && pip install -r requirements.txt && python manage.py migrate && (python manage.py load_rules --if-missing || echo Rules can be loaded later from the Rules page)",
-  "postAttachCommand": "python manage.py runserver 0.0.0.0:8000",
+  "postAttachCommand": "bash .devcontainer/start-app.sh",
   "secrets": {
     "DATABASE_URL": {
       "description": "Optional. A Postgres address (for example from neon.tech) so your collection is kept permanently. Leave blank to use a local file.",
       "documentationUrl": "https://github.com/skyetown1124/manaledger#permanent-database"
     }
   },
-  "forwardPorts": [8000],
+  "forwardPorts": [
+    8000
+  ],
   "portsAttributes": {
     "8000": {
       "label": "Mana Ledger",
@@ -18,7 +20,10 @@
   },
   "customizations": {
     "vscode": {
-      "extensions": ["ms-python.python"]
+      "extensions": [
+        "ms-python.python"
+      ]
     }
-  }
+  },
+  "postStartCommand": "bash .devcontainer/start-app.sh"
 }

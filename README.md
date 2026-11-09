@@ -21,6 +21,21 @@ Your collection is saved inside that codespace. Stop it when you're done
 left off. If you reopen it and the app isn't running, type
 `python manage.py runserver 0.0.0.0:8000` in the terminal.
 
+## Desktop icon (Windows)
+
+Download `tools/windows/Install Mana Ledger icon.cmd` and double-click it once.
+It saves the Mana Ledger icon in your user folder (`%LOCALAPPDATA%\ManaLedger`)
+and puts a **Mana Ledger** shortcut on your desktop. If Windows asks whether to
+run it, choose **Run** (or **More info → Run anyway**). Nothing is installed; delete
+the shortcut like any other.
+
+Double-clicking the icon opens your Codespace in your browser. The Codespace
+starts Mana Ledger by itself (`.devcontainer/start-app.sh`, run whenever it starts
+or you open it), and the app opens in a new tab. If your browser blocks that tab,
+allow pop-ups for github.dev, or open the **Ports** tab and click the globe next
+to port 8000. The shortcut points at the "grim monster" Codespace; if you make a
+new one, edit the URL in the installer.
+
 ## Permanent database
 
 By default the app keeps everything in `db.sqlite3`, a file inside that copy of
