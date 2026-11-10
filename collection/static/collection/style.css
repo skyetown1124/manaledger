@@ -188,6 +188,9 @@ table.data a:hover { text-decoration: underline; }
 .strong { font-weight: 600; }
 .actions { display: flex; gap: 6px; justify-content: flex-end; }
 .actions form { margin: 0; }
+/* In a table, stay a real cell so the buttons sit in the middle of the row and line up. */
+td.actions { display: table-cell; vertical-align: middle; text-align: right; white-space: nowrap; }
+td.actions form { display: inline-block; vertical-align: middle; }
 
 .rarity { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 10px; border: 1px solid var(--line); background: var(--chip-bg); }
 .rarity-mythic { color: #f2753a; border-color: #f2753a66; }
@@ -615,11 +618,15 @@ kbd { font: 11px ui-monospace, Menlo, Consolas, monospace; border: 1px solid var
   .lib-add { align-items: flex-start; }
   /* Deck list rows stack: quantity on the left, everything else beneath the name. */
   .deck-table, .deck-table tbody { display: block; }
-  .deck-table tr { display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
-  table.data.deck-table td { border: 0; padding: 2px 0; }
-  .deck-table td.qty-cell { grid-row: span 4; }
+  .deck-table tr { display: grid; grid-template-columns: 40px 64px minmax(0, 1fr); column-gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  table.data.deck-table td { border: 0; padding: 2px 0; grid-column: 3; }
+  table.data.deck-table td.keep-cell { grid-column: 1; grid-row: 1 / span 5; }
+  table.data.deck-table td.qty-cell { grid-column: 2; grid-row: 1 / span 5; }
+  .deck-table tr.short { background: color-mix(in srgb, var(--down) 10%, transparent); }
+  .deck-table tr.short td { background: none; }
   .deck-table td.num { text-align: left !important; }
-  .deck-table td.actions { justify-content: flex-start; }
+  .deck-table td.actions { display: flex; justify-content: flex-start; text-align: left; }
+  .deck-table td.actions form + form { margin-left: 0; }
 }
 .cards-table td:nth-child(3) { white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
@@ -684,7 +691,7 @@ kbd { font: 11px ui-monospace, Menlo, Consolas, monospace; border: 1px solid var
 .bar.bar-short { background: var(--gold); }
 .bar.bar-ok { background: var(--up); }
 .chip.strong { border-color: var(--accent); font-weight: 600; }
-td.actions form + form { margin-top: 4px; }
+td.actions form + form { margin-left: 6px; }
 .pt-sim-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 10px; padding: 8px 12px;
   border-radius: 6px; font-size: 13.5px; border: 1px solid var(--line); background: var(--chip-bg); }
 .pt-sim-status.on { border-color: color-mix(in srgb, var(--down) 55%, var(--line)); }
