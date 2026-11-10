@@ -68,6 +68,7 @@
               <a href="{% url 'collection:deck' s.deck.pk %}?view=text">View as text</a>
               <a href="{% url 'collection:deck' s.deck.pk %}?view=table">Edit as table</a>
               {% if s.stats.deck_count %}<a href="{% url 'collection:deck_playtest' s.deck.pk %}">Playtest</a>{% endif %}
+              <a href="{% url 'collection:life' %}?deck={{ s.deck.pk }}">Track life with this deck</a>
               <a href="{% url 'collection:deck_suggestions' s.deck.pk %}">Suggestions</a>
               <a href="{% url 'collection:deck_proxies' s.deck.pk %}?all=1">Print proxies</a>
               <a class="ad-menu-danger" href="{% url 'collection:deck' s.deck.pk %}#deck-settings"

@@ -2290,3 +2290,39 @@ class EdhrecTests(TestCase):
             page = self.client.get(reverse("collection:deck_suggestions", args=[deck.pk]))
         get.assert_not_called()
         self.assertIsNone(page.context["edh"])
+
+
+class LifeTrackerTests(TestCase):
+    def setUp(self):
+        self.meren = make_card("Meren of Clan Nel Toth", type_line="Legendary Creature — Human Shaman",
+                               image_url="https://cards.scryfall.io/normal/front/1/2/meren.jpg")
+        self.deck = Deck.objects.create(name="Meren", format="commander")
+        DeckCard.objects.create(deck=self.deck, card=self.meren, board="commander")
+        Deck.objects.create(name="Empty", format="casual")
+
+    def test_page_lists_decks_with_commander_art(self):
+        page = self.client.get(reverse("collection:life") + f"?deck={self.deck.pk}")
+        self.assertEqual(page.status_code, 200)
+        meren = next(d for d in page.context["decks"] if d["name"] == "Meren")
+        self.assertEqual(meren["commanders"][0]["art"], "https://cards.scryfall.io/art_crop/front/1/2/meren.jpg")
+        self.assertTrue(meren["isCommander"])
+        self.assertEqual(page.context["start_deck"], self.deck.pk)
+        self.assertContains(page, 'id="life-decks"')
+        self.assertContains(page, "life-engine.js")
+
+    def test_commander_lookup_uses_known_cards_first(self):
+        with mock.patch.object(scryfall, "named") as named:
+            resp = self.client.get(reverse("collection:life_commander") + "?name=meren of clan nel toth")
+        named.assert_not_called()
+        self.assertEqual(resp.json()["art"], "https://cards.scryfall.io/art_crop/front/1/2/meren.jpg")
+
+    def test_commander_lookup_asks_scryfall_otherwise(self):
+        atraxa = fake_card("Atraxa, Praetors' Voice", "2x2", "190")
+        atraxa["image_url"] = "https://cards.scryfall.io/normal/front/a/b/atraxa.jpg"
+        with mock.patch.object(scryfall, "named", return_value=atraxa):
+            resp = self.client.get(reverse("collection:life_commander") + "?name=Atraxa, Praetors' Voice")
+        self.assertEqual(resp.json()["name"], "Atraxa, Praetors' Voice")
+        self.assertIn("/art_crop/", resp.json()["art"])
+        with mock.patch.object(scryfall, "named", side_effect=scryfall.ScryfallError("nope")):
+            self.assertEqual(self.client.get(reverse("collection:life_commander") + "?name=Zzz").status_code, 404)
+        self.assertEqual(self.client.get(reverse("collection:life_commander")).status_code, 400)

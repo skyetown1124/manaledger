@@ -114,6 +114,17 @@ Open http://127.0.0.1:8000/ and use **Add Cards** to search for your first card.
   it's in your collection: cards you own have **Add to deck**; cards you don't
   have **Add to collection** and **Proxy** (puts it in the deck as a proxy).
   The list is saved for a week; press refresh for a new one.
+- **Life tracker** (the **Life Tracker** tab, or **Life tracker** on a deck):
+  a full-screen counter for 2–6 players, with each player's commander art
+  behind their life total (pick one of your decks, or type any commander;
+  partners show side by side). Tap the left or right half to lose or gain 1;
+  hold for 10. Covers commander damage from each opposing commander (21 from
+  one is lethal, and it also comes off life), poison (10), energy, experience,
+  rad counters, commander tax, the monarch, the initiative, the city's
+  blessing, day/night, turns, a game clock, dice and a coin, a random first
+  player, undo, a game log and rematch. "Around a table" turns the far seats
+  upside down so they face their players. The game is kept in your browser, so
+  a reload doesn't lose it, and the screen stays on while you play.
 - **Deleting decks**: use **Delete deck…** in a deck tile's ⋮ menu, or press
   **Select decks** on the Decks page, tick several (click the tiles) and press
   **Delete**. You're always asked to confirm. Your cards stay in your library,

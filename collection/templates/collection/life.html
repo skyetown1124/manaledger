@@ -1,0 +1,100 @@
+{% load assets %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0b0d12">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <link rel="icon" type="image/png" href="{% asset 'collection/favicon.png' %}">
+  <title>Life Tracker · Mana Ledger</title>
+  <link rel="stylesheet" href="{% asset 'collection/life.css' %}">
+</head>
+<body>
+  <!-- Setup -->
+  <main id="setup" class="setup" hidden>
+    <header class="setup-head">
+      <a class="back" href="{% url 'collection:decks' %}">← Mana Ledger</a>
+      <h1>Life Tracker</h1>
+    </header>
+
+    <div class="resume" id="resume" hidden>
+      <span>You have a game in progress.</span>
+      <button type="button" class="btn primary" id="resume-btn">Resume game</button>
+    </div>
+
+    <section class="setup-row">
+      <h2>Players</h2>
+      <div class="seg" id="count" role="radiogroup" aria-label="Number of players">
+        {% for n in "23456" %}<button type="button" role="radio" data-count="{{ n }}">{{ n }}</button>{% endfor %}
+      </div>
+    </section>
+
+    <section class="setup-row">
+      <h2>Game</h2>
+      <div class="setup-inline">
+        <select id="format" aria-label="Format">
+          <option value="commander">Commander · 40 life</option>
+          <option value="brawl">Brawl · 25 life</option>
+          <option value="oathbreaker">Oathbreaker · 20 life</option>
+          <option value="standard">60-card · 20 life</option>
+          <option value="custom">Custom</option>
+        </select>
+        <label class="inline" id="custom-life-wrap" hidden>Life <input type="number" id="custom-life" min="1" max="999" value="30"></label>
+        <label class="inline"><input type="checkbox" id="cmd-damage" checked> Commander damage (21)</label>
+      </div>
+      <div class="setup-inline">
+        <span class="muted">Seats</span>
+        <div class="seg" id="layout" role="radiogroup" aria-label="Seating">
+          <button type="button" role="radio" data-layout="table" title="Phone or tablet flat in the middle: the far side is upside down so it faces those players">Around a table</button>
+          <button type="button" role="radio" data-layout="screen" title="Everyone reads the same way up (a TV or laptop)">All facing one way</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="setup-row">
+      <h2>Who's playing</h2>
+      <p class="muted small">Pick a deck to put its commander behind the life total, or type any commander. Add a partner if there are two.</p>
+      <div id="seats" class="seats"></div>
+    </section>
+
+    <div class="setup-actions">
+      <button type="button" class="btn primary big" id="start">Start game</button>
+    </div>
+    <datalist id="card-names"></datalist>
+  </main>
+
+  <!-- The table -->
+  <main id="table" class="table" hidden aria-label="Life totals"></main>
+
+  <!-- Game menu (center button) -->
+  <dialog id="menu" class="sheet" aria-labelledby="menu-title">
+    <form method="dialog" class="sheet-inner">
+      <header class="sheet-head"><h2 id="menu-title">Game</h2><button class="x" value="close" aria-label="Close">✕</button></header>
+      <div class="menu-grid">
+        <button type="button" data-act="undo">↶ Undo</button>
+        <button type="button" data-act="nextTurn">Next turn ▸</button>
+        <button type="button" data-act="dice">🎲 Dice &amp; coin</button>
+        <button type="button" data-act="first">Random first player</button>
+        <button type="button" data-act="dayNight">☀/☾ Day / night</button>
+        <button type="button" data-act="log">📜 Game log</button>
+        <button type="button" data-act="fullscreen">⛶ Full screen</button>
+        <button type="button" data-act="rematch">↻ Rematch</button>
+        <button type="button" data-act="setup">New game…</button>
+        <a href="{% url 'collection:decks' %}">← Back to Mana Ledger</a>
+      </div>
+      <div id="menu-extra"></div>
+    </form>
+  </dialog>
+
+  {{ decks|json_script:"life-decks" }}
+  <script>
+    window.LIFE_CONFIG = {
+      commanderUrl: "{% url 'collection:life_commander' %}",
+      autocompleteUrl: "{% url 'collection:autocomplete' %}",
+      startDeck: {{ start_deck|default:0 }},
+    };
+  </script>
+  <script src="{% asset 'collection/life-engine.js' %}"></script>
+  <script src="{% asset 'collection/life.js' %}"></script>
+</body>
+</html>

@@ -61,4 +61,6 @@ urlpatterns = [
     path("backup/download/", views.backup_download, name="backup_download"),
     path("refresh/", views.refresh, name="refresh"),
     path("api/autocomplete/", views.autocomplete, name="autocomplete"),
+    path("life/", views.life_tracker, name="life"),
+    path("life/commander/", views.life_commander, name="life_commander"),
 ]

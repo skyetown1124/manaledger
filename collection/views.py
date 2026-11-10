@@ -1810,3 +1810,45 @@ def deck_trim(request, pk):
     messages.success(request, f"Removed {copies} card{'s' if copies != 1 else ''} ({names}). "
                               "Changed your mind? Versions → Restore the version saved just before.")
     return _back(request, reverse("collection:deck", args=[deck.pk]) + "?view=table")
+
+
+# ------------------------------------------------------------------ Life tracker
+
+def _art(url):
+    """Scryfall 'normal' image -> its art crop (for the life tracker backgrounds)."""
+    return url.replace("/normal/", "/art_crop/", 1) if url and "/normal/" in url else (url or "")
+
+
+def life_tracker(request):
+    """Full-screen life counter for a game, with each player's commander behind their life."""
+    decks = []
+    for deck in Deck.objects.prefetch_related("entries__card").select_related("cover_card").order_by("name"):
+        entries = list(deck.entries.all())
+        cmd = [e.card for e in entries if e.board == "commander"]
+        if not cmd:
+            cover = deck.cover_card or next((e.card for e in entries if e.card.image_url and "Land" not in e.card.type_line), None)
+            cmd = [cover] if cover else []
+        decks.append({
+            "id": deck.pk, "name": deck.name, "format": deck.format,
+            "commanders": [{"name": c.name, "art": _art(c.image_url), "image": c.image_url} for c in cmd[:2]],
+            "isCommander": any(e.board == "commander" for e in entries),
+        })
+    start = _positive_int(request.GET.get("deck"), 0)
+    return render(request, "collection/life.html", {"decks": decks, "start_deck": start})
+
+
+def life_commander(request):
+    """Art for any card by exact name (the life tracker's commander search)."""
+    name = request.GET.get("name", "").strip()
+    if not name:
+        return JsonResponse({"error": "Type a card name."}, status=400)
+    card = Card.objects.filter(name__iexact=name).exclude(image_url="").order_by("-id").first()
+    if card is None:
+        try:
+            data = scryfall.named(name)
+        except scryfall.ScryfallError as exc:
+            return JsonResponse({"error": str(exc)}, status=404)
+        return JsonResponse({"name": data["name"], "art": _art(data.get("image_url") or ""),
+                             "image": data.get("image_url") or "", "colors": data.get("color_identity") or ""})
+    return JsonResponse({"name": card.name, "art": _art(card.image_url), "image": card.image_url,
+                         "colors": card.color_identity or ""})
