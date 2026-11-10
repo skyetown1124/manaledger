@@ -2326,3 +2326,9 @@ class LifeTrackerTests(TestCase):
         with mock.patch.object(scryfall, "named", side_effect=scryfall.ScryfallError("nope")):
             self.assertEqual(self.client.get(reverse("collection:life_commander") + "?name=Zzz").status_code, 404)
         self.assertEqual(self.client.get(reverse("collection:life_commander")).status_code, 400)
+
+    def test_page_copes_with_big_decks(self):
+        cards = Card.objects.bulk_create([Card(scryfall_id=f"big-{i}", name=f"Card {i}", set_code="tst",
+                                               collector_number=str(i), type_line="Creature") for i in range(1200)])
+        DeckCard.objects.bulk_create([DeckCard(deck=self.deck, card=c, board="main") for c in cards])
+        self.assertEqual(self.client.get(reverse("collection:life")).status_code, 200)

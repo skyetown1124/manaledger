@@ -1821,17 +1821,24 @@ def _art(url):
 
 def life_tracker(request):
     """Full-screen life counter for a game, with each player's commander behind their life."""
+    # One flat query for every deck's cards (prefetching through a big IN list is too much for SQLite).
+    by_deck = {}
+    for row in DeckCard.objects.values("deck_id", "board", "card__name", "card__image_url", "card__type_line").order_by("id"):
+        by_deck.setdefault(row["deck_id"], []).append(row)
     decks = []
-    for deck in Deck.objects.prefetch_related("entries__card").select_related("cover_card").order_by("name"):
-        entries = list(deck.entries.all())
-        cmd = [e.card for e in entries if e.board == "commander"]
+    for deck in Deck.objects.select_related("cover_card").order_by("name"):
+        rows = by_deck.get(deck.pk, [])
+        cmd = [{"name": r["card__name"], "image": r["card__image_url"]} for r in rows if r["board"] == "commander"]
         if not cmd:
-            cover = deck.cover_card or next((e.card for e in entries if e.card.image_url and "Land" not in e.card.type_line), None)
-            cmd = [cover] if cover else []
+            if deck.cover_card:
+                cmd = [{"name": deck.cover_card.name, "image": deck.cover_card.image_url}]
+            else:
+                first = next((r for r in rows if r["card__image_url"] and "Land" not in r["card__type_line"]), None)
+                cmd = [{"name": first["card__name"], "image": first["card__image_url"]}] if first else []
         decks.append({
             "id": deck.pk, "name": deck.name, "format": deck.format,
-            "commanders": [{"name": c.name, "art": _art(c.image_url), "image": c.image_url} for c in cmd[:2]],
-            "isCommander": any(e.board == "commander" for e in entries),
+            "commanders": [{"name": c["name"], "art": _art(c["image"]), "image": c["image"]} for c in cmd[:2]],
+            "isCommander": any(r["board"] == "commander" for r in rows),
         })
     start = _positive_int(request.GET.get("deck"), 0)
     return render(request, "collection/life.html", {"decks": decks, "start_deck": start})
