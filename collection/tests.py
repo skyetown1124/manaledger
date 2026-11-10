@@ -2349,3 +2349,31 @@ class BigCollectionTests(TestCase):
             self.assertEqual(self.client.get(url).status_code, 200, url)
         page = self.client.get(reverse("collection:cards") + "?q=Card+5")
         self.assertContains(page, "Deck 0")
+
+
+class SideMenuTests(TestCase):
+    def setUp(self):
+        self.card = make_card("Sol Ring")
+        self.deck = Deck.objects.create(name="Menu Deck", format="commander")
+        DeckCard.objects.create(deck=self.deck, card=self.card, quantity=1)
+
+    def test_menu_on_every_page_marks_the_current_one(self):
+        page = self.client.get(reverse("collection:wants"))
+        self.assertContains(page, 'id="sidenav"')
+        self.assertContains(page, 'class="nav-item active" aria-current="page" title="Want List"', html=False)
+        self.assertNotContains(page, "nav-deck")  # no deck section away from a deck
+
+    def test_deck_pages_get_their_own_section(self):
+        for name in ["deck", "deck_suggestions", "deck_playtest", "deck_proxies"]:
+            page = self.client.get(reverse(f"collection:{name}", args=[self.deck.pk]))
+            self.assertContains(page, "nav-deck", msg_prefix=name)
+            self.assertContains(page, "Menu Deck", msg_prefix=name)
+            self.assertContains(page, reverse("collection:deck_import", args=[self.deck.pk]), msg_prefix=name)
+
+    def test_proxy_sheet_shows_whole_deck_until_proxies_are_marked(self):
+        url = reverse("collection:deck_proxies", args=[self.deck.pk])
+        self.assertEqual(self.client.get(url).context["count"], 1)
+        DeckCard.objects.filter(deck=self.deck).update(proxies=0)
+        self.assertEqual(self.client.get(url + "?all=0").context["count"], 0)
+        DeckCard.objects.filter(deck=self.deck).update(proxies=1)
+        self.assertEqual(self.client.get(url).context["count"], 1)

@@ -125,6 +125,13 @@ Open http://127.0.0.1:8000/ and use **Add Cards** to search for your first card.
   player, undo, a game log and rematch. "Around a table" turns the far seats
   upside down so they face their players. The game is kept in your browser, so
   a reload doesn't lose it, and the screen stays on while you play.
+- **Side menu**: every page has a menu down the left: Collection (Dashboard,
+  My Cards, Add Cards, Import, Want List), Decks (All decks, Precons, Commander
+  ideas, Archidekt) and Play (Life Tracker, Rules), with Refresh prices,
+  light/dark mode and Backup at the bottom. On a deck's pages it also lists
+  that deck's Deck list, Suggestions, Playtest, Import list, Print proxies and
+  Life tracker. The arrow at the top shrinks it to icons (remembered); on a
+  phone it opens from the ☰ button.
 - **Deleting decks**: use **Delete deck…** in a deck tile's ⋮ menu, or press
   **Select decks** on the Decks page, tick several (click the tiles) and press
   **Delete**. You're always asked to confirm. Your cards stay in your library,

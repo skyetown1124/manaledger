@@ -1698,7 +1698,9 @@ def deck_proxy(request, pk):
 def deck_proxies(request, pk):
     """Printable proxy sheet: the deck's proxies (or every card), at real card size."""
     deck = get_object_or_404(Deck.objects.prefetch_related(_with_cards()), pk=pk)
-    everything = request.GET.get("all") == "1"
+    # No proxies marked yet? Then print the whole deck, unless the page asked otherwise.
+    any_proxies = any(min(e.proxies, e.quantity) for e in deck.entries.all())
+    everything = request.GET.get("all") == "1" or ("all" not in request.GET and not any_proxies)
     basics = request.GET.get("basics") == "1"
     style = "text" if request.GET.get("style") == "text" else "image"
     label = request.GET.get("label", "1") == "1"

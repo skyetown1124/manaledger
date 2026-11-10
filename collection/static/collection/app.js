@@ -6,7 +6,7 @@
   function label() {
     if (!button) return;
     const light = root.dataset.theme === "light";
-    button.querySelector("span").textContent = light ? "Dark mode" : "Light mode";
+    button.querySelector(".nav-label, span").textContent = light ? "Dark mode" : "Light mode";
   }
 
   if (button) {
@@ -18,6 +18,41 @@
       document.dispatchEvent(new Event("themechange"));
     });
     label();
+  }
+
+  // Side menu: slides in on phones, shrinks to icons on wider screens (remembered).
+  const nav = document.getElementById("sidenav");
+  const openBtn = document.querySelector(".nav-open");
+  const backdrop = document.querySelector(".nav-backdrop");
+  function setOpen(open) {
+    document.body.classList.toggle("nav-open", open);
+    if (backdrop) backdrop.hidden = !open;
+    if (openBtn) openBtn.setAttribute("aria-expanded", String(open));
+    if (open && nav) { const first = nav.querySelector(".nav-item.active, .nav-item"); if (first) first.focus(); }
+    else if (openBtn && document.activeElement && nav && nav.contains(document.activeElement)) openBtn.focus();
+  }
+  if (nav) {
+    if (openBtn) openBtn.addEventListener("click", () => setOpen(true));
+    if (backdrop) backdrop.addEventListener("click", () => setOpen(false));
+    const closeBtn = nav.querySelector(".nav-close");
+    if (closeBtn) closeBtn.addEventListener("click", () => setOpen(false));
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && document.body.classList.contains("nav-open")) setOpen(false); });
+    const collapse = nav.querySelector(".nav-collapse");
+    const collapseLabel = () => {
+      const mini = root.dataset.nav === "mini";
+      collapse.setAttribute("aria-label", mini ? "Show menu labels" : "Shrink menu to icons");
+      collapse.title = collapse.getAttribute("aria-label");
+      collapse.setAttribute("aria-pressed", String(mini));
+    };
+    if (collapse) {
+      collapse.addEventListener("click", () => {
+        const mini = root.dataset.nav !== "mini";
+        if (mini) root.dataset.nav = "mini"; else delete root.dataset.nav;
+        try { localStorage.setItem("ml-nav", mini ? "mini" : "full"); } catch (e) {}
+        collapseLabel();
+      });
+      collapseLabel();
+    }
   }
 
   // Suggest card names from Scryfall as you type on the Add Cards page.

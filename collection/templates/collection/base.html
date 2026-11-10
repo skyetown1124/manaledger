@@ -8,73 +8,146 @@
   <script>
     // Apply the saved theme before the page paints, so it never flashes.
     try { if (localStorage.getItem("ml-theme") === "light") document.documentElement.dataset.theme = "light"; } catch (e) {}
+    try { if (localStorage.getItem("ml-nav") === "mini") document.documentElement.dataset.nav = "mini"; } catch (e) {}
   </script>
   <link rel="stylesheet" href="{% asset 'collection/style.css' %}">
 </head>
 <body>
-  <header class="topbar">
+{% with u=request.resolver_match.url_name %}
+  <div class="mobilebar">
+    <button type="button" class="nav-open" aria-controls="sidenav" aria-expanded="false" aria-label="Open menu">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+    </button>
     <a class="brand" href="{% url 'collection:dashboard' %}">
       <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 2 21 12 12 22 3 12z" fill="#2f7ed8"/><path d="M12 6.5 16.8 12 12 17.5 7.2 12z" fill="#f0a500"/></svg>
       <span>ManaLedger</span>
     </a>
-    <a class="toplink" href="{% url 'collection:dashboard' %}">
-      <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M3 11 12 3l9 8v10h-6v-6H9v6H3z" fill="currentColor"/></svg>
-      Home
-    </a>
-    <div class="topbar-title">Mana Ledger</div>
-    <div class="topbar-actions">
-      <button type="button" class="pill" id="theme-toggle">
-        <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><circle cx="12" cy="12" r="5" fill="currentColor"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" stroke="currentColor" stroke-width="2"/></svg>
-        <span>Light mode</span>
+  </div>
+  <div class="nav-backdrop" hidden></div>
+
+  <aside class="sidenav" id="sidenav" aria-label="Main menu">
+    <div class="sidenav-head">
+      <a class="brand" href="{% url 'collection:dashboard' %}" title="Mana Ledger home">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 2 21 12 12 22 3 12z" fill="#2f7ed8"/><path d="M12 6.5 16.8 12 12 17.5 7.2 12z" fill="#f0a500"/></svg>
+        <span class="nav-label">ManaLedger</span>
+      </a>
+      <button type="button" class="nav-collapse" aria-label="Shrink menu to icons" title="Shrink menu to icons">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
+      <button type="button" class="nav-close" aria-label="Close menu">✕</button>
+    </div>
+
+    <nav class="sidenav-links">
+      <div class="nav-group">
+        <div class="nav-heading">Collection</div>
+        <a href="{% url 'collection:dashboard' %}" class="nav-item {% if u == 'dashboard' %}active{% endif %}" {% if u == 'dashboard' %}aria-current="page"{% endif %} title="Dashboard">
+          <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M4 20V4M4 20h16M8 16v-5M12 16V8M16 16v-3" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+          <span class="nav-label">Dashboard</span>
+        </a>
+        <a href="{% url 'collection:cards' %}" class="nav-item {% if active_tab == 'cards' %}active{% endif %}" {% if active_tab == 'cards' %}aria-current="page"{% endif %} title="My Cards">
+          <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><rect x="3" y="5" width="12" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 3h10a2 2 0 0 1 2 2v12" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+          <span class="nav-label">My Cards</span>
+        </a>
+        <a href="{% url 'collection:add' %}" class="nav-item {% if active_tab == 'add' %}active{% endif %}" {% if active_tab == 'add' %}aria-current="page"{% endif %} title="Add Cards">
+          <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 8v8M8 12h8" stroke="currentColor" stroke-width="2"/></svg>
+          <span class="nav-label">Add Cards</span>
+        </a>
+        <a href="{% url 'collection:import' %}" class="nav-item {% if active_tab == 'import' %}active{% endif %}" {% if active_tab == 'import' %}aria-current="page"{% endif %} title="Import">
+          <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 19h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="nav-label">Import</span>
+        </a>
+        <a href="{% url 'collection:wants' %}" class="nav-item {% if active_tab == 'wants' %}active{% endif %}" {% if active_tab == 'wants' %}aria-current="page"{% endif %} title="Want List">
+          <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+          <span class="nav-label">Want List</span>
+        </a>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-heading">Decks</div>
+        <a href="{% url 'collection:decks' %}" class="nav-item {% if u == 'decks' %}active{% endif %}" {% if u == 'decks' %}aria-current="page"{% endif %} title="All decks">
+          <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><rect x="7" y="3" width="11" height="15" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 7v12a2 2 0 0 0 2 2h9" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+          <span class="nav-label">All decks</span>
+        </a>
+        {% if deck.pk %}
+          <div class="nav-deck">
+            <div class="nav-deck-name" title="{{ deck.name }}"><span class="nav-label">{{ deck.name }}</span></div>
+            <a href="{% url 'collection:deck' deck.pk %}" class="nav-item sub {% if u == 'deck' %}active{% endif %}" {% if u == 'deck' %}aria-current="page"{% endif %} title="Deck list">
+              <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+              <span class="nav-label">Deck list</span>
+            </a>
+            <a href="{% url 'collection:deck_suggestions' deck.pk %}" class="nav-item sub {% if u == 'deck_suggestions' %}active{% endif %}" {% if u == 'deck_suggestions' %}aria-current="page"{% endif %} title="Suggestions">
+              <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+              <span class="nav-label">Suggestions</span>
+            </a>
+            <a href="{% url 'collection:deck_playtest' deck.pk %}" class="nav-item sub {% if u == 'deck_playtest' %}active{% endif %}" {% if u == 'deck_playtest' %}aria-current="page"{% endif %} title="Playtest">
+              <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M8 5v14l11-7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+              <span class="nav-label">Playtest</span>
+            </a>
+            <a href="{% url 'collection:deck_import' deck.pk %}" class="nav-item sub {% if u == 'deck_import' %}active{% endif %}" {% if u == 'deck_import' %}aria-current="page"{% endif %} title="Import list">
+              <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM14 3v6h6M12 12v6M9 15l3 3 3-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>
+              <span class="nav-label">Import list</span>
+            </a>
+            <a href="{% url 'collection:deck_proxies' deck.pk %}" class="nav-item sub {% if u == 'deck_proxies' %}active{% endif %}" {% if u == 'deck_proxies' %}aria-current="page"{% endif %} title="Print proxies">
+              <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M6 9V3h12v6M6 18H4v-7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7h-2M8 14h8v7H8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+              <span class="nav-label">Print proxies</span>
+            </a>
+            <a href="{% url 'collection:life' %}?deck={{ deck.pk }}" class="nav-item sub" title="Life tracker with this deck">
+              <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M3 12h4l2-5 4 10 2-5h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span class="nav-label">Life tracker</span>
+            </a>
+          </div>
+        {% endif %}
+        <a href="{% url 'collection:precons' %}" class="nav-item {% if u == 'precons' %}active{% endif %}" {% if u == 'precons' %}aria-current="page"{% endif %} title="Precons">
+          <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M4 8l8-4 8 4-8 4zM4 12l8 4 8-4M4 16l8 4 8-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+          <span class="nav-label">Precons</span>
+        </a>
+        <a href="{% url 'collection:commander_ideas' %}" class="nav-item {% if u == 'commander_ideas' %}active{% endif %}" {% if u == 'commander_ideas' %}aria-current="page"{% endif %} title="Commander ideas">
+          <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M4 18h16l-2-10-4 4-2-6-2 6-4-4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+          <span class="nav-label">Commander ideas</span>
+        </a>
+        <a href="{% url 'collection:archidekt' %}" class="nav-item {% if u == 'archidekt' %}active{% endif %}" {% if u == 'archidekt' %}aria-current="page"{% endif %} title="Archidekt">
+          <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <span class="nav-label">Archidekt</span>
+        </a>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-heading">Play</div>
+        <a href="{% url 'collection:life' %}" class="nav-item" title="Life Tracker">
+          <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M3 12h4l2-5 4 10 2-5h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="nav-label">Life Tracker</span>
+        </a>
+        <a href="{% url 'collection:rules' %}" class="nav-item {% if active_tab == 'rules' %}active{% endif %}" {% if active_tab == 'rules' %}aria-current="page"{% endif %} title="Rules">
+          <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M5 4h10a4 4 0 0 1 4 4v12H9a4 4 0 0 1-4-4z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 9h6M9 13h6" stroke="currentColor" stroke-width="2"/></svg>
+          <span class="nav-label">Rules</span>
+        </a>
+      </div>
+    </nav>
+
+    <div class="sidenav-foot">
       <form method="post" action="{% url 'collection:refresh' %}">
         {% csrf_token %}
         <input type="hidden" name="next" value="{{ request.get_full_path }}">
-        <button type="submit" class="refresh">
-          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          Refresh prices
+        <button type="submit" class="nav-item refresh-item" title="Refresh prices">
+          <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="nav-label">Refresh prices</span>
         </button>
       </form>
+      <button type="button" class="nav-item" id="theme-toggle" title="Switch light / dark">
+        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><circle cx="12" cy="12" r="5" fill="currentColor"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" stroke="currentColor" stroke-width="2"/></svg>
+        <span class="nav-label">Light mode</span>
+      </button>
+      <a href="{% url 'collection:backup' %}" class="nav-item {% if u == 'backup' %}active{% endif %}" {% if u == 'backup' %}aria-current="page"{% endif %} title="Backup &amp; database">
+        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+        <span class="nav-label">Backup &amp; database</span>
+      </a>
     </div>
-  </header>
+  </aside>
+{% endwith %}
 
+  <div class="main-col">
   <main class="page">
     <div class="titlebar">{% block heading %}My Collection{% endblock %}</div>
-
-    <nav class="tabs" aria-label="Sections">
-      <a href="{% url 'collection:cards' %}" class="tab {% if active_tab == 'cards' %}active{% endif %}">
-        <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><rect x="3" y="5" width="12" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 3h10a2 2 0 0 1 2 2v12" fill="none" stroke="currentColor" stroke-width="2"/></svg>
-        My Cards
-      </a>
-      <a href="{% url 'collection:add' %}" class="tab {% if active_tab == 'add' %}active{% endif %}">
-        <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 8v8M8 12h8" stroke="currentColor" stroke-width="2"/></svg>
-        Add Cards
-      </a>
-      <a href="{% url 'collection:import' %}" class="tab {% if active_tab == 'import' %}active{% endif %}">
-        <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 19h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Import
-      </a>
-      <a href="{% url 'collection:decks' %}" class="tab {% if active_tab == 'decks' %}active{% endif %}">
-        <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><rect x="7" y="3" width="11" height="15" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 7v12a2 2 0 0 0 2 2h9" fill="none" stroke="currentColor" stroke-width="2"/></svg>
-        Decks
-      </a>
-      <a href="{% url 'collection:wants' %}" class="tab {% if active_tab == 'wants' %}active{% endif %}">
-        <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
-        Want List
-      </a>
-      <a href="{% url 'collection:life' %}" class="tab">
-        <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M3 12h4l2-5 4 10 2-5h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Life Tracker
-      </a>
-      <a href="{% url 'collection:rules' %}" class="tab {% if active_tab == 'rules' %}active{% endif %}">
-        <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M5 4h10a4 4 0 0 1 4 4v12H9a4 4 0 0 1-4-4z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 9h6M9 13h6" stroke="currentColor" stroke-width="2"/></svg>
-        Rules
-      </a>
-      <a href="{% url 'collection:dashboard' %}" class="tab {% if active_tab == 'dashboard' %}active{% endif %}">
-        <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M4 20V4M4 20h16M8 16v-5M12 16V8M16 16v-3" fill="none" stroke="currentColor" stroke-width="2"/></svg>
-        Dashboard
-      </a>
-    </nav>
 
     {% if messages %}
       <div class="messages">
@@ -92,9 +165,9 @@
       <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M12 2 21 12 12 22 3 12z" fill="#2f7ed8"/></svg>
     </span>
     <span>Prices from <a href="https://scryfall.com" target="_blank" rel="noopener">Scryfall</a> · TCGplayer market prices in USD</span>
-    <a class="foot-link" href="{% url 'collection:backup' %}">Backup &amp; database</a>
     <span class="foot-path">{{ request.path }}</span>
   </footer>
+  </div>
 
   <script src="{% asset 'collection/app.js' %}"></script>
   {% block scripts %}{% endblock %}
