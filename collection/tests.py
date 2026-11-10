@@ -1985,12 +1985,12 @@ class DeckVersionPrintingTests(TestCase):
         page = self.client.get(reverse("collection:deck", args=[deck.pk]) + f"?changes=1&since={v.pk}")
         ch = page.context["changes"]                 # a version you pick is compared even if nothing changed
         self.assertEqual((ch["added"], ch["changed"], ch["removed_count"]), (0, 0, 0))
-        from .views import _deck_entries
-        entries = _deck_entries(Deck.objects.prefetch_related("entries__card").get(pk=deck.pk))
+        from .views import _deck_entries, _with_cards
+        entries = _deck_entries(Deck.objects.prefetch_related(_with_cards()).get(pk=deck.pk))
         self.assertEqual(versions.diff(entries, v)["by_entry"], {})
         ea.quantity = 2
         ea.save()
-        entries = _deck_entries(Deck.objects.prefetch_related("entries__card").get(pk=deck.pk))
+        entries = _deck_entries(Deck.objects.prefetch_related(_with_cards()).get(pk=deck.pk))
         d = versions.diff(entries, v)
         self.assertEqual(list(d["by_entry"].values()), [{"status": "more", "delta": 1, "was": 2}])
 
@@ -2332,3 +2332,20 @@ class LifeTrackerTests(TestCase):
                                                collector_number=str(i), type_line="Creature") for i in range(1200)])
         DeckCard.objects.bulk_create([DeckCard(deck=self.deck, card=c, board="main") for c in cards])
         self.assertEqual(self.client.get(reverse("collection:life")).status_code, 200)
+
+
+class BigCollectionTests(TestCase):
+    """SQLite rejects queries that list ~1,000+ ids at once; pages must not build them."""
+
+    def test_deck_and_card_pages_with_thousands_of_cards(self):
+        cards = Card.objects.bulk_create([Card(scryfall_id=f"many-{i}", name=f"Card {i}", set_code="tst",
+                                               collector_number=str(i), type_line="Creature") for i in range(2500)])
+        CollectionItem.objects.bulk_create([CollectionItem(card=c, quantity=1) for c in cards])
+        for d in range(10):
+            deck = Deck.objects.create(name=f"Deck {d}", format="commander")
+            DeckCard.objects.bulk_create([DeckCard(deck=deck, card=c, board="main") for c in cards[d * 240:(d + 1) * 240]])
+        for url in [reverse("collection:decks"), reverse("collection:cards"), reverse("collection:life"),
+                    reverse("collection:deck", args=[deck.pk])]:
+            self.assertEqual(self.client.get(url).status_code, 200, url)
+        page = self.client.get(reverse("collection:cards") + "?q=Card+5")
+        self.assertContains(page, "Deck 0")

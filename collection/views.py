@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.db import transaction
-from django.db.models import Q, Sum
+from django.db.models import Prefetch, Q, Sum
 from django.conf import settings
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -103,10 +103,19 @@ SORTS = {
 }
 
 
+def _with_cards():
+    """Prefetch a deck's entries with their cards joined in. (Prefetching "entries__card"
+    lists every card id in one query, which SQLite rejects once there are ~1,000 of them.)"""
+    return Prefetch("entries", queryset=DeckCard.objects.select_related("card"))
+
+
 def cards(request):
     q = request.GET.get("q", "").strip()
     sort = request.GET.get("sort", "value")
-    items = CollectionItem.objects.select_related("card").prefetch_related("card__deck_entries__deck")
+    items = CollectionItem.objects.select_related("card")
+    decks_of = {}  # card id -> deck names, in one query (no giant IN list)
+    for card_id, deck_name in DeckCard.objects.values_list("card_id", "deck__name"):
+        decks_of.setdefault(card_id, set()).add(deck_name)
     found = search.parse(q)
     if q:
         items = items.filter(card__in=Card.objects.filter(found.q))
@@ -121,7 +130,7 @@ def cards(request):
         gain = None
         if item.purchase_price is not None and item.unit_price is not None:
             gain = (item.unit_price - item.purchase_price) * item.quantity
-        decks = sorted({e.deck.name for e in item.card.deck_entries.all()})
+        decks = sorted(decks_of.get(item.card_id, ()))
         rows.append({"item": item, "card": item.card, "unit_price": item.unit_price,
                      "total": item.total_value, "gain": gain, "decks": decks})
     total = sum((r["total"] for r in rows), Decimal("0"))
@@ -484,7 +493,7 @@ def deck_list(request):
     owned = _owned_counts()
     by_name = _owned_by_name()
     summaries = []
-    for deck in Deck.objects.prefetch_related("entries__card"):
+    for deck in Deck.objects.prefetch_related(_with_cards()):
         entries = _deck_entries(deck, owned, by_name)
         stats = deckrules.analyze(deck.format, entries)
         summaries.append({"deck": deck, "stats": stats, "bracket": _bracket(deck, entries, stats),
@@ -533,7 +542,7 @@ def _deck_cover(deck, entries):
 
 
 def deck_detail(request, pk):
-    deck = get_object_or_404(Deck.objects.select_related("cover_card").prefetch_related("entries__card"), pk=pk)
+    deck = get_object_or_404(Deck.objects.select_related("cover_card").prefetch_related(_with_cards()), pk=pk)
     owned = _owned_counts()
     entries = _deck_entries(deck, owned, _owned_by_name())
     stats = deckrules.analyze(deck.format, entries)
@@ -713,7 +722,7 @@ def deck_bracket(request, pk):
 @require_POST
 def deck_spellbook(request, pk):
     """Ask Commander Spellbook for its bracket estimate and the combos in this deck, and save it."""
-    deck = get_object_or_404(Deck.objects.prefetch_related("entries__card"), pk=pk)
+    deck = get_object_or_404(Deck.objects.prefetch_related(_with_cards()), pk=pk)
     commanders = [e.card.name for e in deck.entries.all() if e.board == "commander"]
     main = [(e.card.name, e.quantity) for e in deck.entries.all() if e.board == "main"]
     if not commanders and not main:
@@ -734,7 +743,7 @@ def deck_spellbook(request, pk):
 
 def deck_playtest(request, pk):
     """Goldfish the deck: shuffle, draw, mulligan and play turns in the browser."""
-    deck = get_object_or_404(Deck.objects.prefetch_related("entries__card"), pk=pk)
+    deck = get_object_or_404(Deck.objects.prefetch_related(_with_cards()), pk=pk)
     cards, commanders = [], []
     for entry in deck.entries.all():
         if entry.board == "side":
@@ -1118,7 +1127,7 @@ def deck_import(request, pk):
 @require_POST
 def deck_collect_needed(request, pk):
     """After buying the missing cards: add them to the collection (the deck's printings, non-foil)."""
-    deck = get_object_or_404(Deck.objects.prefetch_related("entries__card"), pk=pk)
+    deck = get_object_or_404(Deck.objects.prefetch_related(_with_cards()), pk=pk)
     if request.POST.get("confirm") != "yes":
         messages.error(request, "Tick the box to confirm you've got these cards, then press the button again.")
         return redirect(reverse("collection:deck", args=[deck.pk]) + "#needs")
@@ -1348,7 +1357,7 @@ def _collection_cards(exclude_deck=None):
 
 
 def deck_suggestions(request, pk):
-    deck = get_object_or_404(Deck.objects.prefetch_related("entries__card"), pk=pk)
+    deck = get_object_or_404(Deck.objects.prefetch_related(_with_cards()), pk=pk)
     entries = _deck_entries(deck)
     result = suggest.suggestions(entries, _collection_cards(exclude_deck=deck), deck.format,
                                  intended=deck.target_bracket)
@@ -1639,7 +1648,7 @@ def want_import(request):
 @require_POST
 def deck_want_needed(request, pk):
     """Put every card a deck still needs on the want list, for that deck."""
-    deck = get_object_or_404(Deck.objects.prefetch_related("entries__card"), pk=pk)
+    deck = get_object_or_404(Deck.objects.prefetch_related(_with_cards()), pk=pk)
     needs = deckrules.needed_cards(_deck_entries(deck))
     added = 0
     for n in needs:
@@ -1663,7 +1672,7 @@ def deck_want_needed(request, pk):
 @require_POST
 def deck_proxy(request, pk):
     """Mark the copies a deck still needs as proxies: one card (name=...) or all of them."""
-    deck = get_object_or_404(Deck.objects.prefetch_related("entries__card"), pk=pk)
+    deck = get_object_or_404(Deck.objects.prefetch_related(_with_cards()), pk=pk)
     only = request.POST.get("name")
     needs = [n for n in deckrules.needed_cards(_deck_entries(deck)) if not only or n["name"] == only]
     marked = 0
@@ -1688,7 +1697,7 @@ def deck_proxy(request, pk):
 
 def deck_proxies(request, pk):
     """Printable proxy sheet: the deck's proxies (or every card), at real card size."""
-    deck = get_object_or_404(Deck.objects.prefetch_related("entries__card"), pk=pk)
+    deck = get_object_or_404(Deck.objects.prefetch_related(_with_cards()), pk=pk)
     everything = request.GET.get("all") == "1"
     basics = request.GET.get("basics") == "1"
     style = "text" if request.GET.get("style") == "text" else "image"
