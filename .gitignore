@@ -7,3 +7,6 @@ db.sqlite3
 backups/
 db-*.sqlite3
 manaledger-backup-*.json
+
+# Windows launcher: marks that the first-run backup was loaded
+.data-loaded

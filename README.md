@@ -71,6 +71,16 @@ Backups are plain JSON in the same format as `python manage.py dumpdata`, so
 
 You need Python 3.10 or newer.
 
+**Windows, the easy way:** double-click **Start Mana Ledger.cmd** in the
+`manaledger` folder. The first time, it sets up Python's packages and the
+database, and loads your newest `manaledger-backup-*.json` from your Downloads
+folder (or the same folder), so download a backup from your Codespace first.
+Then it starts the app and opens http://127.0.0.1:8000/. Keep its window open
+while you use the app; close it to stop. It needs Python 3.10+ (it tells you how
+to install it if it's missing).
+
+By hand, on any computer:
+
 ```bash
 cd manaledger
 python -m venv .venv
