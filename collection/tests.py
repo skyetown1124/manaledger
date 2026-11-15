@@ -2377,3 +2377,58 @@ class SideMenuTests(TestCase):
         self.assertEqual(self.client.get(url + "?all=0").context["count"], 0)
         DeckCard.objects.filter(deck=self.deck).update(proxies=1)
         self.assertEqual(self.client.get(url).context["count"], 1)
+
+
+class TickerTests(TestCase):
+    """The Dashboard's movers ticker, built from saved Scryfall price snapshots."""
+
+    def setUp(self):
+        from datetime import date, timedelta
+        from .models import PriceSnapshot
+        self.today = date(2026, 11, 14)
+        d = lambda n: self.today - timedelta(days=n)
+        self.ring = make_card("The One Ring", usd=60)
+        self.bolt = make_card("Lightning Bolt", usd=0.5)
+        self.want = make_card("Mana Crypt", usd=150)
+        self.other = make_card("Nobody's Card", usd=10)
+        CollectionItem.objects.create(card=self.ring, quantity=2, finish="nonfoil")
+        CollectionItem.objects.create(card=self.bolt, quantity=4, finish="nonfoil")
+        WantItem.objects.create(card=self.want, quantity=1)
+        for card, prices in ((self.ring, {10: 50, 1: 55, 0: 60}), (self.bolt, {1: 0.3, 0: 0.6}),
+                             (self.want, {8: 200, 0: 150}), (self.other, {1: 5, 0: 10})):
+            for ago, usd in prices.items():
+                PriceSnapshot.objects.create(card=card, date=d(ago), usd=usd)
+
+    def test_since_last_refresh(self):
+        from . import ticker
+        moves = ticker.movers("day", today=self.today)
+        names = [m["name"] for m in moves]
+        self.assertEqual(names, ["Mana Crypt", "The One Ring"])  # bulk Bolt skipped; unowned card left out
+        ring = moves[1]
+        self.assertTrue(ring["up"]); self.assertEqual(ring["owned"], 2); self.assertEqual(ring["pct"], 9.1)
+        crypt = moves[0]
+        self.assertFalse(crypt["up"]); self.assertTrue(crypt["wanted"]); self.assertEqual(crypt["pct"], -25.0)
+
+    def test_week_uses_snapshot_on_or_before_cutoff(self):
+        from . import ticker
+        ring = [m for m in ticker.movers("week", today=self.today) if m["name"] == "The One Ring"][0]
+        self.assertEqual(ring["then"], 50.0)  # 10 days ago is the newest on or before 7 days ago
+        self.assertEqual(ring["pct"], 20.0)
+
+    def test_month_falls_back_to_oldest(self):
+        from . import ticker
+        ring = [m for m in ticker.movers("month", today=self.today) if m["name"] == "The One Ring"][0]
+        self.assertEqual(ring["then"], 50.0)
+
+    def test_dashboard_shows_ticker_and_remembers_period(self):
+        r = self.client.get(reverse("collection:dashboard") + "?ticker=week")
+        self.assertContains(r, 'class="ticker"')
+        self.assertEqual(self.client.session["ticker"], "week")
+        r = self.client.get(reverse("collection:dashboard"))
+        self.assertEqual(r.context["ticker_period"], "week")
+
+    def test_no_history_shows_empty_message(self):
+        from .models import PriceSnapshot
+        PriceSnapshot.objects.all().delete()
+        r = self.client.get(reverse("collection:dashboard"))
+        self.assertContains(r, "start the ticker")

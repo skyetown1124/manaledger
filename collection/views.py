@@ -14,7 +14,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from . import decks as deckrules
-from . import archidekt, backup, brackets, edhrec, importer, suggest, versions, ocr, precons, rules, scryfall, search, services, spellbook, trash
+from . import archidekt, backup, brackets, edhrec, ticker, importer, suggest, versions, ocr, precons, rules, scryfall, search, services, spellbook, trash
 from .models import (Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, DeckVersion, DeletedDeck, GlossaryTerm, LinkedProfile, Precon, PriceSnapshot, WantItem,
                      Rule, RulesEdition)
 from .stats import build_dashboard
@@ -90,7 +90,18 @@ def dashboard(request):
     last = items and max((i.card.prices_updated for i in items if i.card.prices_updated), default=None)
     last_local = timezone.localtime(last) if last else None
     context = build_dashboard(_rows(items), snapshots, last_local, timezone.localdate())
-    context.update({"active_tab": "dashboard", "item_count": len(items)})
+    period = request.GET.get("ticker")
+    if period in ticker.PERIODS:
+        request.session["ticker"] = period
+    else:
+        period = request.session.get("ticker", "day")
+        period = period if period in ticker.PERIODS else "day"
+    moves = ticker.movers(period)
+    context.update({"active_tab": "dashboard", "item_count": len(items),
+                    "ticker": moves, "ticker_period": period,
+                    "ticker_periods": [(k, v[0]) for k, v in ticker.PERIODS.items()],
+                    "ticker_up": sum(1 for m in moves if m["up"]),
+                    "ticker_down": sum(1 for m in moves if not m["up"])})
     return render(request, "collection/dashboard.html", context)
 
 

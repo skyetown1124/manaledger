@@ -1,0 +1,33 @@
+{% load money %}
+<section class="ticker" aria-label="Price movers in your cards">
+  <div class="ticker-head">
+    <span class="ticker-title">Movers</span>
+    <nav class="ticker-periods" aria-label="Ticker period">
+      {% for key, label in ticker_periods %}
+        <a href="?ticker={{ key }}" class="{% if key == ticker_period %}on{% endif %}" title="{{ label }}"{% if key == ticker_period %} aria-current="true"{% endif %}>{% if key == "day" %}Last refresh{% elif key == "week" %}7d{% else %}30d{% endif %}</a>
+      {% endfor %}
+    </nav>
+    {% if ticker %}<span class="ticker-count"><span class="up">▲ {{ ticker_up }}</span> <span class="down">▼ {{ ticker_down }}</span></span>{% endif %}
+  </div>
+  {% if ticker %}
+    <div class="ticker-window" tabindex="0" aria-label="Scrolling list of price changes; hover or focus to pause">
+      <ul class="ticker-track{% if ticker|length < 4 %} still{% endif %}" style="--ticker-time: {{ ticker|length|add:4 }}s">
+        {% for pass in "ab" %}
+          {% if pass == "a" or ticker|length >= 4 %}{% for m in ticker %}
+            <li{% if pass == "b" %} aria-hidden="true"{% endif %}>
+              <a href="{% url 'collection:card' m.card_id %}"{% if pass == "b" %} tabindex="-1"{% endif %} title="{{ m.then|money }} → {{ m.now|money }} since {{ m.since|date:'M j' }}">
+                <span class="t-name">{{ m.name }}</span>
+                <span class="t-set">{{ m.set_code|upper }}{% if m.finish != "nonfoil" %} · {{ m.finish }}{% endif %}</span>
+                <span class="t-price">{{ m.now|money }}</span>
+                <span class="{% if m.up %}up{% else %}down{% endif %} t-move">{% if m.up %}▲{% else %}▼{% endif %} {{ m.abs_pct|floatformat:1 }}%</span>
+                <span class="t-tag">{% if m.owned %}×{{ m.owned }}{% else %}wanted{% endif %}</span>
+              </a>
+            </li>
+          {% endfor %}{% endif %}
+        {% endfor %}
+      </ul>
+    </div>
+  {% else %}
+    <p class="ticker-empty">No price moves of $1 or more {% if ticker_period == "day" %}since the last refresh{% else %}in this period{% endif %} yet. Refresh prices on another day to start the ticker.</p>
+  {% endif %}
+</section>

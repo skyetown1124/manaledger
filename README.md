@@ -237,6 +237,14 @@ Open http://127.0.0.1:8000/ and use **Add Cards** to search for your first card.
   the "value by day" chart, so the history grows the more often you refresh.
 - **Light mode** switches themes and remembers your choice in this browser.
 
+## Price movers ticker
+
+The Dashboard opens with a scrolling **Movers** band: the biggest price changes among cards you own and cards on your want list. Each entry shows the card, set, today's price, the change (green ▲ / red ▼) and whether you own it (×2) or want it. Hover or tap it to pause; click a card to open it.
+
+Choose the period at the left: **Last refresh** (compared with the previous saved price), **7d** or **30d**. The choice is remembered. Cards under $1 both before and after are skipped so bulk swings don't crowd it out.
+
+It uses the Scryfall prices the app already saves each time you refresh, so it needs no outside service. It fills in once prices have been refreshed on at least two different days.
+
 ## Deck views
 
 The **Decks** tab shows each deck as a tile like Archidekt's: the cover art
