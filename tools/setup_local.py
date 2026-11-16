@@ -27,6 +27,18 @@ def run(*args):
     subprocess.run([str(a) for a in args], cwd=ROOT, check=True)
 
 
+def _has_data():
+    db = ROOT / "db.sqlite3"
+    if not db.exists():
+        return False
+    import sqlite3
+    try:
+        with sqlite3.connect(db) as conn:
+            return conn.execute("SELECT COUNT(*) FROM collection_collectionitem").fetchone()[0] > 0
+    except sqlite3.Error:
+        return False
+
+
 def main():
     if sys.version_info < (3, 10):
         sys.exit("Mana Ledger needs Python 3.10 or newer. Install it from https://www.python.org/downloads/")
@@ -44,6 +56,8 @@ def main():
     print("Updating the database...")
     run(VPY, "manage.py", "migrate", "--noinput", "-v0")
 
+    if not MARKER.exists() and _has_data():
+        MARKER.write_text("existing database kept")  # never load a backup over cards you already have
     if not MARKER.exists():
         places = [ROOT, Path.home() / "Downloads"]
         backups = sorted((f for p in places if p.is_dir() for f in p.glob("manaledger-backup-*.json")),
