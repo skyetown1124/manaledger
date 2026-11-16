@@ -1,4 +1,5 @@
-"""Back up and restore your own data (collection, decks, price history) as a JSON file.
+"""Back up and restore your own data (collection, decks with their saved versions,
+recently deleted decks, want list, tag sets, price history) as a JSON file.
 
 The file is the same format as `python manage.py dumpdata`, so `loaddata` can read it
 too. Card text, rulings, the Comprehensive Rules and the precon list aren't included:
@@ -11,10 +12,12 @@ from django.core.management.color import no_style
 from django.db import connection, transaction
 from django.utils import timezone
 
-from .models import Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, LinkedProfile, PriceSnapshot, TagSet, WantItem
+from .models import (Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, DeckVersion, DeletedDeck, LinkedProfile,
+                     PriceSnapshot, TagSet, WantItem)
 
 # Order matters on restore: cards before anything that points at them.
-MODELS = [Card, CollectionItem, PriceSnapshot, CollectionSnapshot, Deck, DeckCard, LinkedProfile, WantItem, TagSet]
+MODELS = [Card, CollectionItem, PriceSnapshot, CollectionSnapshot, Deck, DeckCard, DeckVersion, DeletedDeck,
+          LinkedProfile, WantItem, TagSet]
 LABELS = {m._meta.label_lower: m for m in MODELS}
 
 
@@ -29,6 +32,7 @@ def counts():
         "cards wanted": sum(WantItem.objects.values_list("quantity", flat=True)),
         "printings saved": Card.objects.count(),
         "price history entries": PriceSnapshot.objects.count(),
+        "saved deck versions": DeckVersion.objects.count(),
     }
 
 
@@ -63,8 +67,11 @@ def restore(raw):
             Deck.objects.all().delete()          # deck cards go with them
             CollectionSnapshot.objects.all().delete()
             LinkedProfile.objects.all().delete()
+            # Older backups have no tag sets or deleted decks: keep the ones here.
             if any(o["model"] == "collection.tagset" for o in data):
-                TagSet.objects.all().delete()  # older backups have no tag sets: keep yours
+                TagSet.objects.all().delete()
+            if any(o["model"] == "collection.deleteddeck" for o in data):
+                DeletedDeck.objects.all().delete()
             Card.objects.all().delete()          # owned copies and price history go with them
             for obj in serializers.deserialize("json", json.dumps(data)):
                 obj.save()

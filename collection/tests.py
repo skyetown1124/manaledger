@@ -1406,6 +1406,22 @@ class BackupTests(TestCase):
         self.assertEqual(DeckCard.objects.get().card.name, "Sol Ring")
         Deck.objects.create(name="New after restore")  # ids keep working
 
+    def test_versions_and_recently_deleted_come_along(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from . import trash, versions
+        deck = Deck.objects.get(name="Backup deck")
+        versions.snapshot(deck, label="Before the big cut")
+        gone = Deck.objects.create(name="Old deck", format="casual")
+        DeckCard.objects.create(deck=gone, card=self.ring)
+        trash.delete_deck(gone)
+        raw = self.client.get(reverse("collection:backup_download")).content
+        DeckVersion.objects.all().delete()
+        DeletedDeck.objects.all().delete()
+        self.client.post(reverse("collection:backup"), {"confirm": "yes", "backup": SimpleUploadedFile("b.json", raw)})
+        self.assertEqual(list(Deck.objects.get(name="Backup deck").versions.values_list("label", flat=True)),
+                         ["Before the big cut"])
+        self.assertEqual(list(DeletedDeck.objects.values_list("name", flat=True)), ["Old deck"])
+
     def test_bad_file_changes_nothing(self):
         from django.core.files.uploadedfile import SimpleUploadedFile
         from . import backup
