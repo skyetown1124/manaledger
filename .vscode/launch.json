@@ -1,0 +1,29 @@
+{
+  // Press F5 to start Mana Ledger and open it in your browser. Needs VS Code's Python extension.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Mana Ledger",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/manage.py",
+      "args": ["runserver", "127.0.0.1:8000"],
+      "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "django": true,
+      "justMyCode": true,
+      "preLaunchTask": "Mana Ledger: set up",
+      "serverReadyAction": { "pattern": "Starting development server at (https?://\\S+)", "uriFormat": "%s", "action": "openExternally" }
+    },
+    {
+      "name": "Mana Ledger (Mac / Linux)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/manage.py",
+      "args": ["runserver", "127.0.0.1:8000"],
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "django": true,
+      "preLaunchTask": "Mana Ledger: set up",
+      "serverReadyAction": { "pattern": "Starting development server at (https?://\\S+)", "uriFormat": "%s", "action": "openExternally" }
+    }
+  ]
+}

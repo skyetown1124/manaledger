@@ -1,0 +1,50 @@
+{
+  // Terminal > Run Task... lists these. "set up" runs once before the first start.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Mana Ledger: set up",
+      "detail": "Make .venv, install packages, update the database, load your newest backup the first time",
+      "type": "shell",
+      "command": "python",
+      "windows": { "command": "py" },
+      "args": ["tools/setup_local.py"],
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true }
+    },
+    {
+      "label": "Mana Ledger: run",
+      "detail": "Start the app at http://127.0.0.1:8000/ (stop it with Ctrl+C in the terminal)",
+      "type": "shell",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": { "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe" },
+      "args": ["manage.py", "runserver", "127.0.0.1:8000"],
+      "dependsOn": "Mana Ledger: set up",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "manaledger",
+        "pattern": { "regexp": "^__never__$" },
+        "background": { "activesBegin": true, "beginsPattern": "Watching for file changes|Performing system checks", "endsPattern": "Quit the server with" }
+      },
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "group": { "kind": "build", "isDefault": true }
+    },
+    {
+      "label": "Mana Ledger: refresh prices",
+      "type": "shell",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": { "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe" },
+      "args": ["manage.py", "refresh_prices"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Mana Ledger: run tests",
+      "type": "shell",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": { "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe" },
+      "args": ["manage.py", "test", "collection"],
+      "group": "test",
+      "problemMatcher": []
+    }
+  ]
+}

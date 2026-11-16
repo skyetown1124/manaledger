@@ -21,6 +21,29 @@ Your collection is saved inside that codespace. Stop it when you're done
 left off. If you reopen it and the app isn't running, type
 `python manage.py runserver 0.0.0.0:8000` in the terminal.
 
+## Run it in VS Code on your PC
+
+Everything VS Code needs is in the `.vscode` folder, so there's nothing to set up by hand.
+
+1. Install [Python 3.10 or newer](https://www.python.org/downloads/) (tick "Add python.exe to PATH")
+   and [VS Code](https://code.visualstudio.com/).
+2. Get the project: in VS Code, **Clone Git Repository…** on the Welcome page (paste
+   `https://github.com/skyetown1124/manaledger`), or open the folder you already have
+   with **File → Open Folder…**. Say yes to "Do you trust the authors" (it's your code)
+   and to installing the recommended extensions (Python).
+3. Press **F5**. The first time, it makes a private Python environment (`.venv`),
+   installs the packages, sets up the database and, if it finds a
+   `manaledger-backup-*.json` in the project folder or your Downloads folder, loads your
+   cards and decks from it. Then it starts the app and opens http://127.0.0.1:8000/ in your browser.
+
+Stop it with the red square (or Shift+F5). Without the Python extension, use
+**Terminal → Run Task… → Mana Ledger: run** instead. Other tasks there: **set up**
+(run again after a `git pull`; F5 does it for you), **refresh prices** and **run tests**.
+
+To bring your data from the Codespace: open Mana Ledger there, go to **Backup &
+database**, press **Download backup**, and put the file in your Downloads folder before
+the first F5 (or restore it later on the same page in the local app).
+
 ## Desktop icon (Windows)
 
 Download `tools/windows/Install Mana Ledger icon.cmd` and double-click it once.
