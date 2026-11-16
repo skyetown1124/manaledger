@@ -4,7 +4,8 @@
     {% for group in stats.groups %}
       <section class="txt-group">
         <header class="stk-head">
-          <div><strong>{% if group.label == "Commander" %}♛ {% endif %}{{ group.label }}</strong><span>Qty: {{ group.count }}</span></div>
+          <div><strong>{% if group.label == "Commander" %}♛ {% endif %}{{ group.label }}</strong><span>Qty: {{ group.count }}{% if group.suggested %} · {{ group.suggested }} suggested{% endif %}{% if group.maybe %} · not counted{% endif %}</span></div>
+          <button type="button" class="link-btn small" data-select-group>Select all</button>
           <span>Price: {{ group.value|money }}</span>
         </header>
         <ul>
@@ -15,7 +16,7 @@
                 data-card="{% url 'collection:card' e.card_id %}" data-update="{% url 'collection:deck_entry_update' e.id %}" data-card-id="{{ e.card_id }}" data-board="{{ e.board }}">
               {% include "collection/_keep_box.html" %}
               {% include "collection/_qty_buttons.html" with show_qty=True %}
-              <span class="txt-name">{{ e.name }}</span>{% include "collection/_change_badge.html" %}
+              <span class="txt-name">{{ e.name }}</span>{% include "collection/_change_badge.html" %}{% include "collection/_tag_chips.html" %}
               <span class="txt-cost">{{ e.mana_cost|mana }}</span>
             </li>
           {% endfor %}

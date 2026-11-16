@@ -1,0 +1,41 @@
+<details class="deck-tags" id="deck-tags"{% if group_by == "tag" and not deck.tag_order %} open{% endif %}>
+  <summary><strong>Tags</strong>
+    {% if deck.tag_order %}<span class="tag-chips">{% for t in deck.tag_order %}<span class="tag-chip">{{ t }}</span>{% endfor %}</span>{% else %}<span class="small muted">Label cards (Ramp, Card draw, Win condition…) and group the list by them</span>{% endif %}
+    {% if suggested_count %}<span class="small muted">· {{ suggested_count }} card{{ suggested_count|pluralize }} could be tagged automatically</span>{% endif %}
+  </summary>
+  <div class="deck-tags-body">
+    {% if suggested_count %}
+      <form method="post" action="{% url 'collection:deck_tags' deck.pk %}" class="tag-row">
+        {% csrf_token %}<input type="hidden" name="action" value="fill">
+        <button type="submit" class="btn small primary">Tag {{ suggested_count }} suggested card{{ suggested_count|pluralize }}</button>
+        <span class="small muted">Untagged cards get tags from their rules text (ramp, card draw, removal, board wipes, counterspells, tutors). Group by Tag shows the suggestions first, marked with “?”.</span>
+      </form>
+    {% endif %}
+    <form method="post" action="{% url 'collection:deck_tags' deck.pk %}" class="tag-row">
+      {% csrf_token %}<input type="hidden" name="action" value="order">
+      <label for="tag-order">This deck's tags, in order</label>
+      <input type="text" id="tag-order" name="tags" value="{{ deck.tag_order|join:', ' }}" placeholder="Ramp, Card draw, Removal, Board wipe, Win condition" class="wide">
+      <button type="submit" class="btn small">Save</button>
+    </form>
+    <p class="note">Group by Tag lists these first, in this order; any other tags follow A to Z. They're also offered first when you tag a card. Tag single cards in the Table view, or several at once with Select.</p>
+    <div class="tag-row">
+      {% if tag_sets %}
+        <form method="post" action="{% url 'collection:deck_tags' deck.pk %}" class="tag-row">
+          {% csrf_token %}
+          <label for="tag-set">Tag set</label>
+          <select id="tag-set" name="set" class="compact">{% for t in tag_sets %}<option value="{{ t.pk }}">{{ t.name }} ({{ t.tags|length }})</option>{% endfor %}</select>
+          <button type="submit" class="btn small" name="action" value="apply_set" title="Replace this deck's tag list with the set">Use</button>
+          <button type="submit" class="btn small ghost" name="action" value="delete_set">Delete set</button>
+        </form>
+      {% endif %}
+      {% if deck.tag_order %}
+        <form method="post" action="{% url 'collection:deck_tags' deck.pk %}" class="tag-row">
+          {% csrf_token %}<input type="hidden" name="action" value="save_set">
+          <label for="tag-set-name">Save these tags as a set</label>
+          <input type="text" id="tag-set-name" name="name" maxlength="60" placeholder="e.g. Commander basics" required class="compact">
+          <button type="submit" class="btn small">Save set</button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+</details>

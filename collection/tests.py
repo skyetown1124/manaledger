@@ -1188,7 +1188,9 @@ class DeckListParseTests(TestCase):
         self.assertEqual(boards["Delver of Secrets"], "side")
         self.assertEqual(boards["Negate"], "side")
         self.assertEqual(boards["Brainstorm"], "main")   # a new "Deck:" header goes back to main
-        self.assertNotIn("Mana Crypt", boards)            # maybeboard skipped
+        self.assertEqual(boards["Mana Crypt"], "maybe")   # Maybeboard section
+        tags = {l.name: l.tags for l in lines}
+        self.assertEqual(tags["Brainstorm"], ["Draw"])     # Archidekt category -> tag
 
     def test_no_headers_means_main(self):
         lines, _ = importer.parse_lines("1 Sol Ring\n2 Lightning Bolt")
@@ -1510,7 +1512,10 @@ class ArchidektParseTests(TestCase):
         self.assertEqual(deck["format"], "commander")
         rows = [(r["name"], r["board"], r["quantity"], r["finish"]) for r in deck["rows"]]
         self.assertEqual(rows, [("Sol Ring", "commander", 1, "foil"), ("Lightning Bolt", "main", 4, "nonfoil"),
-                                ("Counterspell", "main", 1, "nonfoil"), ("Delver of Secrets", "main", 1, "nonfoil")])
+                                ("Counterspell", "main", 1, "nonfoil"), ("Delver of Secrets", "main", 1, "nonfoil"),
+                                ("Lightning Bolt", "maybe", 1, "nonfoil")])
+        # Other Archidekt categories come along as tags.
+        self.assertEqual([r["tags"] for r in deck["rows"]], [[], ["Removal", "Ramp"], ["Removal"], [], []])
 
 
 @mock.patch.object(scryfall, "lookup", fake_lookup)
@@ -1537,7 +1542,9 @@ class ArchidektViewTests(TestCase):
         entries = {(e.card.name, e.board): e.quantity for e in deck.entries.select_related("card")}
         self.assertEqual(entries, {("Sol Ring", "commander"): 1, ("Lightning Bolt", "main"): 4,
                                    ("Counterspell", "main"): 1,
-                                   ("Delver of Secrets // Insectile Aberration", "main"): 1})
+                                   ("Delver of Secrets // Insectile Aberration", "main"): 1,
+                                   ("Lightning Bolt", "maybe"): 1})
+        self.assertEqual(DeckCard.objects.get(deck=deck, card__name="Lightning Bolt", board="main").tags, ["Removal", "Ramp"])
         self.assertEqual(CollectionItem.objects.count(), 0)
         self.assertContains(self.client.get(url), "imported")
 
@@ -1546,12 +1553,12 @@ class ArchidektViewTests(TestCase):
         self.assertEqual(Deck.objects.count(), 1)
 
         # Local edits are replaced by Archidekt's list on update (only when confirmed).
-        DeckCard.objects.filter(deck=deck, card__name="Lightning Bolt").update(quantity=1)
+        DeckCard.objects.filter(deck=deck, card__name="Lightning Bolt", board="main").update(quantity=1)
         sync = reverse("collection:archidekt_sync", args=[deck.pk])
         self.client.post(sync)
-        self.assertEqual(DeckCard.objects.get(deck=deck, card__name="Lightning Bolt").quantity, 1)
+        self.assertEqual(DeckCard.objects.get(deck=deck, card__name="Lightning Bolt", board="main").quantity, 1)
         self.client.post(sync, {"confirm": "yes"})
-        self.assertEqual(DeckCard.objects.get(deck=deck, card__name="Lightning Bolt").quantity, 4)
+        self.assertEqual(DeckCard.objects.get(deck=deck, card__name="Lightning Bolt", board="main").quantity, 4)
         self.assertContains(self.client.get(reverse("collection:deck", args=[deck.pk])), "Update from Archidekt")
 
         self.client.post(url, {"action": "unlink"})
@@ -2010,38 +2017,122 @@ class LibraryLiveSearchTests(TestCase):
         self.assertContains(full, 'id="library-results"')
 
 
-class DeckTrimTests(TestCase):
+class DeckBulkTests(TestCase):
+    """Select cards, then move / tag / proxy / remove them together."""
+
     def setUp(self):
-        self.deck = Deck.objects.create(name="Trim", format="casual")
-        self.entries = [DeckCard.objects.create(deck=self.deck, card=make_card(n), quantity=q)
-                        for n, q in (("Keep Me", 1), ("Cut Me", 2), ("Cut Me Too", 1), ("Not Shown", 1))]
-        self.url = reverse("collection:deck_trim", args=[self.deck.pk])
+        self.deck = Deck.objects.create(name="Bulk", format="commander")
+        self.cmd = DeckCard.objects.create(deck=self.deck, card=make_card("Boss", type_line="Legendary Creature — Elf",
+                                                                           color_identity="G"), board="commander")
+        self.a = DeckCard.objects.create(deck=self.deck, card=make_card("Elf A", color_identity="G"), quantity=1)
+        self.b = DeckCard.objects.create(deck=self.deck, card=make_card("Elf B", color_identity="G"), quantity=1)
+        self.blue = DeckCard.objects.create(deck=self.deck, card=make_card("Blue Thing", color_identity="U"),
+                                            board="maybe")
+        self.url = reverse("collection:deck_bulk", args=[self.deck.pk])
 
-    def test_removes_only_unticked_cards_that_were_shown(self):
-        keep, cut1, cut2, hidden = self.entries
-        self.client.get(reverse("collection:deck", args=[self.deck.pk]))       # baseline version
-        shown = [keep.pk, cut1.pk, cut2.pk]                                    # "Not Shown" wasn't on the page
-        page = self.client.post(self.url, {"shown": shown, "keep": [keep.pk]}, follow=True)
-        self.assertContains(page, "Removed 3 cards")
-        self.assertEqual(sorted(self.deck.entries.values_list("card__name", flat=True)), ["Keep Me", "Not Shown"])
-        self.assertTrue(self.deck.versions.filter(label="Before removing 3 cards").exists())
+    def test_remove_only_selected_and_saves_a_version(self):
+        self.client.get(reverse("collection:deck", args=[self.deck.pk]))
+        page = self.client.post(self.url, {"sel": [self.a.pk], "action": "remove"}, follow=True)
+        self.assertContains(page, "Removed 1 card")
+        self.assertFalse(DeckCard.objects.filter(pk=self.a.pk).exists())
+        self.assertTrue(DeckCard.objects.filter(pk=self.b.pk).exists())
+        self.assertTrue(self.deck.versions.filter(label="Before removing 1 card").exists())
 
-    def test_nothing_unticked_or_nothing_sent_removes_nothing(self):
-        ids = [e.pk for e in self.entries]
-        self.client.post(self.url, {"shown": ids, "keep": ids})
-        self.client.post(self.url, {})                                       # a page that sent no boxes
-        self.assertEqual(self.deck.entries.count(), 4)
-
-    def test_other_decks_are_safe(self):
+    def test_nothing_selected_or_other_decks_change_nothing(self):
         other = Deck.objects.create(name="Other", format="casual")
-        theirs = DeckCard.objects.create(deck=other, card=make_card("Theirs"), quantity=1)
-        self.client.post(self.url, {"shown": [theirs.pk]})
+        theirs = DeckCard.objects.create(deck=other, card=make_card("Theirs"))
+        self.client.post(self.url, {"action": "remove"})
+        self.client.post(self.url, {"sel": [theirs.pk], "action": "remove"})
+        self.assertEqual(self.deck.entries.count(), 4)
         self.assertTrue(DeckCard.objects.filter(pk=theirs.pk).exists())
 
-    def test_table_view_has_keep_boxes(self):
-        page = self.client.get(reverse("collection:deck", args=[self.deck.pk]) + "?view=table")
-        self.assertContains(page, 'name="keep"', count=4)
-        self.assertContains(page, "Remove unticked cards")
+    def test_move_to_maybeboard_and_back_follows_rules(self):
+        self.client.post(self.url, {"sel": [self.a.pk, self.b.pk], "action": "move", "board": "maybe"})
+        self.assertEqual(set(self.deck.entries.filter(board="maybe").values_list("card__name", flat=True)),
+                         {"Elf A", "Elf B", "Blue Thing"})
+        # Blue Thing is outside the commander's colors, so it stays in the Maybeboard.
+        page = self.client.post(self.url, {"sel": [self.a.pk, self.blue.pk], "action": "move", "board": "main"}, follow=True)
+        self.assertContains(page, "Not moved: Blue Thing")
+        self.assertEqual(DeckCard.objects.get(pk=self.a.pk).board, "main")
+        self.assertEqual(DeckCard.objects.get(pk=self.blue.pk).board, "maybe")
+
+    def test_tag_untag_and_proxy(self):
+        self.client.post(self.url, {"sel": [self.a.pk, self.b.pk], "action": "tag", "tag": "Ramp"})
+        self.client.post(self.url, {"sel": [self.a.pk], "action": "tag", "tag": "ramp"})  # no duplicate
+        self.assertEqual(DeckCard.objects.get(pk=self.a.pk).tags, ["Ramp"])
+        self.client.post(self.url, {"sel": [self.b.pk], "action": "untag", "tag": "RAMP"})
+        self.assertEqual(DeckCard.objects.get(pk=self.b.pk).tags, [])
+        self.client.post(self.url, {"sel": [self.a.pk], "action": "proxy"})
+        self.assertEqual(DeckCard.objects.get(pk=self.a.pk).proxies, 1)
+        self.client.post(self.url, {"sel": [self.a.pk], "action": "unproxy"})
+        self.assertEqual(DeckCard.objects.get(pk=self.a.pk).proxies, 0)
+
+
+class MaybeboardTests(TestCase):
+    def test_maybeboard_counts_for_nothing(self):
+        deck = Deck.objects.create(name="Maybe", format="commander")
+        DeckCard.objects.create(deck=deck, card=make_card("Boss", type_line="Legendary Creature — Elf",
+                                                         color_identity="G"), board="commander")
+        DeckCard.objects.create(deck=deck, card=make_card("Off Color", color_identity="U", usd=50), board="maybe")
+        page = self.client.get(reverse("collection:deck", args=[deck.pk]))
+        stats = page.context["stats"]
+        self.assertEqual(stats["deck_count"], 1)
+        self.assertEqual(stats["value"], 1)          # only the commander's $1
+        self.assertEqual(stats["maybe_count"], 1)
+        self.assertFalse(any("Off Color" in (c.get("detail") or "") for c in stats["checks"]))
+        self.assertEqual(stats["groups"][-1]["label"], "Maybeboard")
+        self.assertNotIn("Off Color", stats["exports"]["arena"])
+        self.assertIn("Maybeboard{noDeck}{noPrice}", stats["exports"]["archidekt"])
+
+    def test_adding_to_maybeboard_skips_rules(self):
+        deck = Deck.objects.create(name="Maybe", format="commander")
+        DeckCard.objects.create(deck=deck, card=make_card("Boss", type_line="Legendary Creature — Elf",
+                                                         color_identity="G"), board="commander")
+        blue = make_card("Off Color", color_identity="U")
+        CollectionItem.objects.create(card=blue)
+        self.client.post(reverse("collection:deck_add", args=[deck.pk]), {"card_id": blue.pk, "board": "maybe"})
+        self.assertTrue(deck.entries.filter(card=blue, board="maybe").exists())
+
+
+class DeckTagTests(TestCase):
+    def setUp(self):
+        self.deck = Deck.objects.create(name="Tags", format="casual")
+        self.wrath = DeckCard.objects.create(deck=self.deck, card=make_card(
+            "Wrath", type_line="Sorcery", oracle_text="Destroy all creatures."))
+        self.rock = DeckCard.objects.create(deck=self.deck, card=make_card(
+            "Rock", type_line="Artifact", oracle_text="{T}: Add {C}{C}."))
+        self.plain = DeckCard.objects.create(deck=self.deck, card=make_card("Vanilla", type_line="Creature — Bear"))
+        self.url = reverse("collection:deck", args=[self.deck.pk])
+
+    def test_group_by_tag_shows_suggestions_then_fill_saves_them(self):
+        page = self.client.get(self.url + "?group=tag")
+        labels = [g["label"] for g in page.context["stats"]["groups"]]
+        self.assertEqual(labels, ["Board wipe", "Ramp", "Untagged"])
+        self.assertContains(page, "Wrath")
+        self.assertEqual(page.context["suggested_count"], 2)
+        self.client.post(reverse("collection:deck_tags", args=[self.deck.pk]), {"action": "fill"})
+        self.assertEqual(DeckCard.objects.get(pk=self.wrath.pk).tags, ["Board wipe"])
+        self.assertEqual(DeckCard.objects.get(pk=self.rock.pk).tags, ["Ramp"])
+        self.assertEqual(DeckCard.objects.get(pk=self.plain.pk).tags, [])
+        self.assertEqual(self.client.get(self.url).context["group_by"], "tag")  # remembered
+
+    def test_tag_order_sets_and_single_card_edit(self):
+        tags_url = reverse("collection:deck_tags", args=[self.deck.pk])
+        self.client.post(tags_url, {"action": "order", "tags": "Win condition, Ramp, ramp,  Board wipe "})
+        self.deck.refresh_from_db()
+        self.assertEqual(self.deck.tag_order, ["Win condition", "Ramp", "Board wipe"])
+        self.client.post(tags_url, {"action": "save_set", "name": "Basics"})
+        from .models import TagSet
+        saved = TagSet.objects.get(name="Basics")
+        other = Deck.objects.create(name="Other", format="casual")
+        self.client.post(reverse("collection:deck_tags", args=[other.pk]), {"action": "apply_set", "set": saved.pk})
+        other.refresh_from_db()
+        self.assertEqual(other.tag_order, ["Win condition", "Ramp", "Board wipe"])
+        self.client.post(reverse("collection:deck_entry_update", args=[self.plain.pk]),
+                         {"quantity": "1", "board": "main", "tags": "Win condition, Beater"})
+        self.assertEqual(DeckCard.objects.get(pk=self.plain.pk).tags, ["Win condition", "Beater"])
+        labels = [g["label"] for g in self.client.get(self.url + "?group=tag").context["stats"]["groups"]]
+        self.assertEqual(labels[:3], ["Win condition", "Ramp", "Board wipe"])  # the deck's order first
 
 
 class DeckViewControlsTests(TestCase):
@@ -2052,9 +2143,8 @@ class DeckViewControlsTests(TestCase):
         url = reverse("collection:deck", args=[deck.pk])
         for view in ("stacks", "text", "table"):
             page = self.client.get(url + f"?view={view}")
-            self.assertContains(page, 'name="keep"', count=2, msg_prefix=view)
-            self.assertContains(page, 'name="shown"', count=2, msg_prefix=view)
-            self.assertContains(page, "Remove unticked cards", msg_prefix=view)
+            self.assertContains(page, 'name="sel"', count=2, msg_prefix=view)
+            self.assertContains(page, 'value="remove"', msg_prefix=view)
             self.assertContains(page, 'name="quantity" value="3"', msg_prefix=view)   # + for the Bolts
             self.assertContains(page, 'name="quantity" value="0"', msg_prefix=view)   # − for the Ring removes it
         # a − press on a single copy takes the card out
@@ -2432,3 +2522,112 @@ class TickerTests(TestCase):
         PriceSnapshot.objects.all().delete()
         r = self.client.get(reverse("collection:dashboard"))
         self.assertContains(r, "start the ticker")
+
+
+class ManaAnalysisTests(TestCase):
+    def entry(self, name, qty=1, board="main", **kw):
+        base = dict(card_id=hash(name) % 10000, name=name, set_code="tst", collector_number="1", board=board,
+                    quantity=qty, type_line="Creature", mana_cost="", cmc=0, colors="", color_identity="",
+                    oracle_text="", legalities={}, details_loaded=True, price=1.0, owned=qty, is_basic=False, tags=[])
+        base.update(kw)
+        return base
+
+    def test_sources_hand_odds_and_color_curve(self):
+        entries = [
+            self.entry("Boss", board="commander", color_identity="GU", mana_cost="{G}{U}", cmc=2, colors="GU"),
+            self.entry("Forest", 30, type_line="Basic Land — Forest", is_basic=True, color_identity="G"),
+            self.entry("Island", 5, type_line="Basic Land — Island", is_basic=True, color_identity="U"),
+            self.entry("Command Tower", type_line="Land",
+                       oracle_text="{T}: Add one mana of any color in your commander's color identity."),
+            self.entry("Bear", 30, mana_cost="{1}{G}", cmc=2, colors="G", color_identity="G"),
+            self.entry("Merfolk", 33, mana_cost="{U}{U}", cmc=2, colors="U", color_identity="U"),
+        ]
+        m = decks.analyze("casual", entries)["mana"]
+        by = {c["color"]: c for c in m["colors"]}
+        self.assertEqual((by["G"]["lands"], by["U"]["lands"]), (31, 6))
+        self.assertTrue(by["U"]["short"])         # lots of blue symbols, few Islands
+        self.assertFalse(by["G"]["short"])
+        self.assertEqual(m["library"], 99)
+        self.assertEqual(m["lands"], 36)
+        self.assertAlmostEqual(sum(h["pct"] for h in m["hand"]), 100, delta=0.5)
+        self.assertTrue(40 < m["keepable"] < 100)
+        self.assertEqual([r["key"] for r in m["curve"]], ["U", "G", "M"])
+
+    def test_fetch_lands_count_for_the_colors_they_find(self):
+        land = self.entry("Wooded Foothills", type_line="Land",
+                          oracle_text="{T}, Pay 1 life, Sacrifice: Search your library for a Mountain or Forest card, put it onto the battlefield.")
+        self.assertEqual(decks.produced_colors(land, set("RG")), {"R", "G"})
+        self.assertEqual(decks.hypergeom_at_least(10, 10, 3, 3), 1.0)
+
+
+class DeckExportTests(TestCase):
+    def test_formats(self):
+        deck = Deck.objects.create(name="Exp", format="commander")
+        DeckCard.objects.create(deck=deck, card=make_card("Boss", type_line="Legendary Creature — Elf",
+                                                         set_code="abc", collector_number="7"), board="commander")
+        DeckCard.objects.create(deck=deck, card=make_card("Sol Ring", set_code="cmm", collector_number="410"),
+                                tags=["Ramp", "Mana rock"])
+        ex = self.client.get(reverse("collection:deck", args=[deck.pk])).context["exports"]
+        self.assertEqual(ex["plain"], "1 Boss\n1 Sol Ring")
+        self.assertEqual(ex["arena"], "Commander\n1 Boss\n\nDeck\n1 Sol Ring")
+        self.assertEqual(ex["mtgo"], "1 Sol Ring\n\n1 Boss")           # commander in the sideboard
+        self.assertIn("1 Sol Ring (CMM) 410 #Ramp #Mana_rock", ex["moxfield"])
+        self.assertIn("1x Boss (abc) 7 [Commander{top}]", ex["archidekt"])
+        self.assertIn("1x Sol Ring (cmm) 410 [Ramp,Mana rock]", ex["archidekt"])
+        # Re-importing our own exports keeps the tags.
+        lines, problems = importer.parse_lines(ex["moxfield"] + "\n" + ex["archidekt"])
+        self.assertEqual(problems, [])
+        self.assertEqual([l.tags for l in lines if l.name == "Sol Ring"], [["Ramp", "Mana rock"], ["Ramp", "Mana rock"]])
+
+
+class TokenTests(TestCase):
+    def test_parse_lookup_and_print(self):
+        raw = {"id": "aaa", "name": "Maker", "all_parts": [
+            {"component": "combo_piece", "id": "aaa", "name": "Maker"},
+            {"component": "token", "id": "tok1", "name": "Treasure", "type_line": "Token Artifact — Treasure"},
+        ]}
+        self.assertEqual(scryfall.parse_card(raw)["tokens"],
+                         [{"id": "tok1", "name": "Treasure", "type_line": "Token Artifact — Treasure"}])
+        deck = Deck.objects.create(name="Tok", format="casual")
+        maker = make_card("Maker")
+        DeckCard.objects.create(deck=deck, card=maker)
+        page = self.client.get(reverse("collection:deck", args=[deck.pk]))
+        self.assertEqual(page.context["tokens"]["unknown"], 1)
+        self.assertContains(page, "Look up tokens")
+        fresh = dict(scryfall.parse_card(dict(raw, set="tst", collector_number="1")), scryfall_id=maker.scryfall_id)
+        with mock.patch.object(scryfall, "get_many", return_value=([fresh], [])):
+            self.client.post(reverse("collection:deck_tokens", args=[deck.pk]))
+        page = self.client.get(reverse("collection:deck", args=[deck.pk]))
+        self.assertEqual([t["name"] for t in page.context["tokens"]["rows"]], ["Treasure"])
+        self.assertIn("cards.scryfall.io/normal/front/t/o/tok1.jpg", page.context["tokens"]["rows"][0]["image_url"])
+        sheet = self.client.get(reverse("collection:deck_proxies", args=[deck.pk]) + "?all=tokens")
+        self.assertContains(sheet, "Print 1 card")
+        self.assertContains(self.client.get(reverse("collection:deck_proxies", args=[deck.pk]) + "?all=tokens&style=text"), "Made by Maker")
+
+
+class CollectionDetailsTests(TestCase):
+    def test_condition_language_location_filter_and_csv(self):
+        bolt = CollectionItem.objects.create(card=make_card("Lightning Bolt", usd=2), quantity=3)
+        ring = CollectionItem.objects.create(card=make_card("Sol Ring", usd=1), quantity=1, finish="foil")
+        self.client.post(reverse("collection:item_update", args=[bolt.pk]),
+                         {"quantity": "3", "condition": "LP", "language": "ja", "location": "  Binder   2 "})
+        bolt.refresh_from_db()
+        self.assertEqual((bolt.condition, bolt.language, bolt.location), ("LP", "ja", "Binder 2"))
+        page = self.client.get(reverse("collection:cards") + "?loc=Binder+2")
+        self.assertEqual([r["card"].name for r in page.context["rows"]], ["Lightning Bolt"])
+        page = self.client.get(reverse("collection:cards") + "?loc=-")
+        self.assertEqual([r["card"].name for r in page.context["rows"]], ["Sol Ring"])
+        csv_text = self.client.get(reverse("collection:cards_export")).content.decode("utf-8-sig")
+        import csv as csvmod
+        rows = list(csvmod.DictReader(StringIO(csv_text)))
+        self.assertEqual(rows[0]["Name"], "Lightning Bolt")
+        self.assertEqual((rows[0]["Count"], rows[0]["Condition"], rows[0]["Language"], rows[0]["Location"]),
+                         ("3", "Lightly Played", "Japanese", "Binder 2"))
+        self.assertEqual(rows[1]["Foil"], "foil")
+        self.assertEqual(ring.pk, CollectionItem.objects.get(card__name="Sol Ring").pk)
+
+    def test_maybeboard_never_goes_into_the_collection_import(self):
+        lines, _ = importer.parse_lines("1 Sol Ring\nMaybeboard\n1 Mana Crypt")
+        result = importer.ImportResult(matches=[importer.Match(l, {"scryfall_id": l.name, "usd": 1}, "nonfoil") for l in lines])
+        self.assertEqual([i["id"] for i in result.items()], ["Sol Ring"])
+        self.assertEqual({i["id"]: i["board"] for i in result.deck_items()}, {"Sol Ring": "main", "Mana Crypt": "maybe"})

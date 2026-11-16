@@ -1,7 +1,7 @@
 """Deck rules and statistics, computed from plain dicts (no database calls here).
 
 views.py builds one dict per DeckCard with these keys:
-    card_id, name, set_code, collector_number, board ('commander' | 'main' | 'side'),
+    card_id, name, set_code, collector_number, board ('commander' | 'main' | 'side' | 'maybe'), tags (list),
     quantity, type_line, mana_cost, cmc, colors, color_identity, oracle_text,
     legalities (dict), details_loaded, price (float or None), owned (int),
     is_basic (bool)
@@ -253,8 +253,11 @@ def _alpha(entry):
     return (entry["name"].casefold(), entry.get("set_code") or "")
 
 
-def analyze(fmt, entries):
+def analyze(fmt, entries, group_by="type", tag_order=None):
+    """Rules, stats and the grouped deck list. Maybeboard cards are shown but count for nothing."""
     rules = FORMAT_RULES.get(fmt, FORMAT_RULES["casual"])
+    maybe = [e for e in entries if e["board"] == "maybe"]
+    entries = [e for e in entries if e["board"] != "maybe"]
     by_board = defaultdict(list)
     for e in entries:
         by_board[e["board"]].append(e)
@@ -271,16 +274,22 @@ def analyze(fmt, entries):
         groups.append({"label": "Commander", "count": commander_count,
                        "entries": sorted(by_board["commander"], key=_alpha)})
 
-    typed = defaultdict(list)
-    for e in by_board["main"]:
-        typed[deck_type(e["type_line"])].append(e)
-    for key, label in TYPE_GROUPS:
-        if typed[key]:
-            rows = sorted(typed[key], key=_alpha)
-            groups.append({"label": label, "count": sum(e["quantity"] for e in rows), "entries": rows})
+    if group_by == "tag":
+        groups += tag_groups(by_board["main"], tag_order or [])
+    else:
+        typed = defaultdict(list)
+        for e in by_board["main"]:
+            typed[deck_type(e["type_line"])].append(e)
+        for key, label in TYPE_GROUPS:
+            if typed[key]:
+                rows = sorted(typed[key], key=_alpha)
+                groups.append({"label": label, "count": sum(e["quantity"] for e in rows), "entries": rows})
     if by_board["side"]:
         groups.append({"label": "Sideboard", "count": side_count,
                        "entries": sorted(by_board["side"], key=_alpha)})
+    if maybe:
+        groups.append({"label": "Maybeboard", "maybe": True, "count": sum(e["quantity"] for e in maybe),
+                       "entries": sorted(maybe, key=_alpha)})
 
     for g in groups:
         g["value"] = round(sum((e["price"] or 0) * e["quantity"] for e in g["entries"]), 2)
@@ -411,6 +420,9 @@ def analyze(fmt, entries):
         "need_cost": round(sum(n["cost"] for n in needs if n["cost"] is not None), 2),
         "need_unpriced": sum(1 for n in needs if n["cost"] is None),
         "export": export_text(by_board),
+        "exports": exports(by_board, maybe, fmt),
+        "maybe_count": sum(e["quantity"] for e in maybe),
+        "mana": mana_analysis(by_board["commander"], by_board["main"]),
     }
 
 
@@ -452,3 +464,226 @@ def export_text(by_board):
             lines = [f'{e["quantity"]} {e["name"]} ({e["set_code"].upper()}) {e["collector_number"]}' for e in rows]
             sections.append(title + "\n" + "\n".join(lines))
     return "\n\n".join(sections)
+
+
+
+# ------------------------------------------------------------------ Tags
+
+DEFAULT_TAGS = ["Ramp", "Card draw", "Removal", "Board wipe", "Counterspell", "Tutor",
+                "Protection", "Recursion", "Win condition", "Combo", "Engine", "Utility land"]
+# The app's role guesses (suggest.roles_of) as tag names, most specific first.
+ROLE_TAGS = [("wipe", "Board wipe"), ("interaction", "Removal"), ("ramp", "Ramp"),
+             ("draw", "Card draw"), ("tutor", "Tutor")]
+LAND_GROUP = "Lands"
+UNTAGGED = "Untagged"
+
+
+def suggested_tags(entry):
+    """Tags the app would give a card from its rules text (empty for lands and plain cards)."""
+    from .suggest import roles_of
+    roles = roles_of(entry)
+    if "interaction" in roles and re.search(r"\bcounter target\b", entry.get("oracle_text") or "", re.I):
+        roles = (roles - {"interaction"}) | {"counter"}
+    names = dict(ROLE_TAGS, counter="Counterspell")
+    order = ["wipe", "counter", "interaction", "ramp", "draw", "tutor"]
+    return [names[r] for r in order if r in roles]
+
+
+def clean_tags(value, limit=12):
+    """'Ramp, card draw ,,Ramp' or a list -> ['Ramp', 'card draw'] (trimmed, no repeats, 40 chars max)."""
+    items = value.split(",") if isinstance(value, str) else (value or [])
+    out, seen = [], set()
+    for item in items:
+        tag = re.sub(r"\s+", " ", str(item)).strip()[:40]
+        if tag and tag.casefold() not in seen:
+            seen.add(tag.casefold())
+            out.append(tag)
+    return out[:limit]
+
+
+def tag_groups(main, tag_order):
+    """Group main-deck cards by their first tag. Untagged cards go under the tag the app
+    suggests for them (marked as suggested), lands under Lands, the rest under Untagged."""
+    buckets = defaultdict(list)
+    for e in main:
+        tags = e.get("tags") or []
+        if tags:
+            e["auto_tag"] = None
+            buckets[tags[0]].append(e)
+            continue
+        guess = [] if deck_type(e["type_line"]) == "Land" else suggested_tags(e)
+        e["auto_tag"] = guess[0] if guess else None
+        buckets[e["auto_tag"] or (LAND_GROUP if deck_type(e["type_line"]) == "Land" else UNTAGGED)].append(e)
+    rank = {t.casefold(): i for i, t in enumerate(tag_order)}
+    special = {LAND_GROUP: 1, UNTAGGED: 2}
+
+    def order(name):
+        if name in special:
+            return (2, special[name], "")
+        if name.casefold() in rank:
+            return (0, rank[name.casefold()], "")
+        return (1, 0, name.casefold())
+
+    groups = []
+    for name in sorted(buckets, key=order):
+        rows = sorted(buckets[name], key=_alpha)
+        groups.append({"label": name, "count": sum(e["quantity"] for e in rows), "entries": rows, "tag": True,
+                       "suggested": sum(1 for e in rows if e.get("auto_tag"))})
+    return groups
+
+
+# ------------------------------------------------------------------ Mana analysis
+
+BASIC_TYPES = {"Plains": "W", "Island": "U", "Swamp": "B", "Mountain": "R", "Forest": "G"}
+ADD_RE = re.compile(r"\badd\b[^.]*", re.I)
+ANY_COLOR_RE = re.compile(r"\b(any color|any one color|any type|the chosen color|that color|one color of your choice)\b", re.I)
+FETCH_RE = re.compile(r"search your library for [^.]*?\b(land|plains|island|swamp|mountain|forest)\b[^.]*", re.I)
+
+
+def produced_colors(entry, deck_colors):
+    """Colors of mana a card can make (for lands: what it taps for or fetches). Heuristic."""
+    text = entry.get("oracle_text") or ""
+    front = (entry.get("type_line") or "").split("//")[0]
+    colors = {c for t, c in BASIC_TYPES.items() if re.search(rf"\b{t}\b", front)}
+    for clause in ADD_RE.findall(text):
+        colors |= {c for c in COLORS if "{" + c + "}" in clause}
+        if ANY_COLOR_RE.search(clause):
+            colors |= set(deck_colors)
+    for found in FETCH_RE.finditer(text):
+        fetched = found.group(0)
+        named = {c for t, c in BASIC_TYPES.items() if re.search(rf"\b{t}\b", fetched, re.I)}
+        colors |= named or ({c for c in deck_colors} if re.search(r"\bbasic land\b|\bland card\b", fetched, re.I) else set())
+    return colors & set(COLORS)
+
+
+def _choose(n, k):
+    from math import comb
+    return comb(n, k) if 0 <= k <= n else 0
+
+
+def hypergeom_at_least(population, successes, draws, k):
+    """Chance of at least k successes when drawing `draws` cards (no replacement)."""
+    if population <= 0 or draws <= 0:
+        return 1.0 if k <= 0 else 0.0
+    draws = min(draws, population)
+    total = _choose(population, draws)
+    return sum(_choose(successes, i) * _choose(population - successes, draws - i)
+               for i in range(max(k, 0), draws + 1)) / total
+
+
+def mana_analysis(commanders, main):
+    """Color sources vs. colored symbols, opening-hand land odds, and the curve by color."""
+    playing = commanders + main
+    deck_colors = set("".join(e.get("color_identity") or "" for e in commanders)) or \
+        {c for e in playing for c in (e.get("color_identity") or "")}
+    pip_counts = Counter()
+    for e in playing:
+        for c, n in pips(e["mana_cost"]).items():
+            pip_counts[c] += n * e["quantity"]
+    land_sources, other_sources = Counter(), Counter()
+    for e in playing:
+        made = produced_colors(e, deck_colors)
+        bucket = land_sources if deck_type(e["type_line"]) == "Land" else other_sources
+        for c in made:
+            bucket[c] += e["quantity"]
+    total_pips = sum(pip_counts.values()) or 1
+    total_sources = sum(land_sources[c] for c in COLORS if pip_counts[c] or c in deck_colors) or 1
+    colors = []
+    for c in COLORS:
+        if not (pip_counts[c] or land_sources[c] or c in deck_colors):
+            continue
+        pip_pct = round(100 * pip_counts[c] / total_pips) if pip_counts[c] else 0
+        src_pct = round(100 * land_sources[c] / total_sources)
+        colors.append({"color": c, "pips": pip_counts[c], "pip_pct": pip_pct,
+                       "lands": land_sources[c], "src_pct": src_pct, "other": other_sources[c],
+                       "short": pip_counts[c] > 0 and src_pct + 10 < pip_pct})
+
+    # Opening hand: the library is the main deck (the commander starts in the command zone).
+    library = sum(e["quantity"] for e in main)
+    lands = sum(e["quantity"] for e in main if deck_type(e["type_line"]) == "Land")
+    hand = []
+    if library >= 7:
+        for k in range(8):
+            p = _choose(lands, k) * _choose(library - lands, 7 - k) / _choose(library, 7)
+            hand.append({"lands": k, "pct": round(100 * p, 1)})
+    peak = max((h["pct"] for h in hand), default=0) or 1
+    for h in hand:
+        h["bar"] = round(100 * h["pct"] / peak)
+        h["good"] = 2 <= h["lands"] <= 4
+    keepable = round(sum(h["pct"] for h in hand if h["good"]), 1)
+    by_turn3 = {
+        "play": round(100 * hypergeom_at_least(library, lands, 9, 3), 1) if library >= 9 else None,
+        "draw": round(100 * hypergeom_at_least(library, lands, 10, 3), 1) if library >= 10 else None,
+    }
+
+    # Curve by color: non-land cards you play, by mana value.
+    rows = {}
+    for e in playing:
+        if deck_type(e["type_line"]) == "Land":
+            continue
+        cols = e.get("colors") or ""
+        key = "M" if len(cols) > 1 else (cols or "C")
+        rows.setdefault(key, [0] * len(CURVE_LABELS))[min(int(e.get("cmc") or 0), 7)] += e["quantity"]
+    order = list(COLORS) + ["M", "C"]
+    names = {"W": "White", "U": "Blue", "B": "Black", "R": "Red", "G": "Green", "M": "Multicolor", "C": "Colorless"}
+    peak_cell = max((n for r in rows.values() for n in r), default=0) or 1
+    curve = [{"key": k, "label": names[k], "total": sum(rows[k]),
+              "cells": [{"count": n, "level": round(n / peak_cell, 3)} for n in rows[k]]}
+             for k in order if k in rows]
+    return {"colors": colors, "hand": hand, "keepable": keepable, "library": library, "lands": lands,
+            "by_turn3": by_turn3, "curve": curve, "curve_labels": CURVE_LABELS,
+            "short": [c["color"] for c in colors if c["short"]]}
+
+
+# ------------------------------------------------------------------ Exports
+
+EXPORT_FORMATS = [
+    ("plain", "Plain list (1 Card Name)"),
+    ("arena", "MTG Arena"),
+    ("mtgo", "MTGO (.txt)"),
+    ("moxfield", "Moxfield (with sets and tags)"),
+    ("archidekt", "Archidekt (with sets and categories)"),
+]
+
+
+def _sorted(rows):
+    return sorted(rows, key=lambda e: e["name"].casefold())
+
+
+def exports(by_board, maybe, fmt):
+    """The deck list as text for each site or app in EXPORT_FORMATS."""
+    cmd, main, side = (_sorted(by_board.get(b, [])) for b in ("commander", "main", "side"))
+    maybe = _sorted(maybe)
+
+    def plain(rows):
+        return [f'{e["quantity"]} {e["name"]}' for e in rows]
+
+    def with_set(rows, tags=False):
+        out = []
+        for e in rows:
+            line = f'{e["quantity"]} {e["name"]} ({e["set_code"].upper()}) {e["collector_number"]}'
+            if tags and e.get("tags"):
+                line += " " + " ".join("#" + re.sub(r"\s+", "_", t) for t in e["tags"])
+            out.append(line)
+        return out
+
+    def sections(parts):
+        return "\n\n".join(title + "\n" + "\n".join(lines) for title, lines in parts if lines)
+
+    out = {}
+    out["plain"] = "\n".join(plain(cmd + main) + ([""] + plain(side) if side else []))
+    out["arena"] = sections([("Commander", plain(cmd)), ("Deck", plain(main)), ("Sideboard", plain(side))])
+    # MTGO: main deck, a blank line, then the sideboard; a Commander deck's commander goes in the sideboard.
+    mtgo_side = side + cmd if fmt == "commander" else side
+    out["mtgo"] = "\n".join(plain(main if fmt == "commander" else cmd + main) + ([""] + plain(mtgo_side) if mtgo_side else []))
+    out["moxfield"] = sections([("Commander", with_set(cmd, True)), ("Deck", with_set(main, True)),
+                                ("Sideboard", with_set(side, True)), ("Maybeboard", with_set(maybe, True))])
+    lines = []
+    for board, rows in (("commander", cmd), ("main", main), ("side", side), ("maybe", maybe)):
+        for e in rows:
+            cats = {"commander": ["Commander{top}"], "side": ["Sideboard{noDeck}"],
+                    "maybe": ["Maybeboard{noDeck}{noPrice}"]}.get(board, list(e.get("tags") or []))
+            line = f'{e["quantity"]}x {e["name"]} ({e["set_code"].lower()}) {e["collector_number"]}'
+            lines.append(line + (f" [{','.join(cats)}]" if cats else ""))
+    out["archidekt"] = "\n".join(lines)
+    return out

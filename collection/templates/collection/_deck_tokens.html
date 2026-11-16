@@ -1,0 +1,29 @@
+{% if stats.deck_count %}
+<section class="panel tokens-panel" id="tokens">
+  <div class="section-head">
+    <span>Tokens{% if tokens.rows %} <span class="muted">({{ tokens.rows|length }})</span>{% endif %}</span>
+    <span class="spacer"></span>
+    {% if tokens.unknown %}
+      <form method="post" action="{% url 'collection:deck_tokens' deck.pk %}">
+        {% csrf_token %}<button type="submit" class="btn small{% if not tokens.rows %} primary{% endif %}">Look up tokens{% if tokens.rows %} for {{ tokens.unknown }} more card{{ tokens.unknown|pluralize }}{% endif %}</button>
+      </form>
+    {% endif %}
+    {% if tokens.rows %}<a class="btn small" href="{% url 'collection:deck_proxies' deck.pk %}?all=tokens">Print tokens</a>{% endif %}
+  </div>
+  {% if tokens.rows %}
+    <ul class="token-grid">
+      {% for t in tokens.rows %}
+        <li>
+          <img src="{{ t.image_url }}" alt="{{ t.name }} token" loading="lazy" onerror="this.classList.add('broken')">
+          <div><strong>{{ t.name }}</strong> <span class="muted small">{{ t.type_line }}</span></div>
+          <div class="small muted">From {{ t.makers|join:", " }}</div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% elif tokens.unknown %}
+    <p class="note">See which tokens and emblems this deck makes, so you have them ready (or can print them). Looking them up asks Scryfall about {{ tokens.unknown }} card{{ tokens.unknown|pluralize }}; Refresh prices also fills them in.</p>
+  {% else %}
+    <p class="note">This deck doesn't make any tokens or emblems.</p>
+  {% endif %}
+</section>
+{% endif %}

@@ -15,7 +15,7 @@ from django.views.decorators.http import require_POST
 
 from . import decks as deckrules
 from . import archidekt, backup, brackets, edhrec, ticker, importer, suggest, versions, ocr, precons, rules, scryfall, search, services, spellbook, trash
-from .models import (Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, DeckVersion, DeletedDeck, GlossaryTerm, LinkedProfile, Precon, PriceSnapshot, WantItem,
+from .models import (Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, DeckVersion, DeletedDeck, GlossaryTerm, LinkedProfile, Precon, PriceSnapshot, TagSet, WantItem,
                      Rule, RulesEdition)
 from .stats import build_dashboard
 
@@ -130,6 +130,12 @@ def cards(request):
     found = search.parse(q)
     if q:
         items = items.filter(card__in=Card.objects.filter(found.q))
+    locations = sorted({loc for loc in CollectionItem.objects.values_list("location", flat=True) if loc}, key=str.casefold)
+    loc = request.GET.get("loc", "")
+    if loc == "-":
+        items = items.filter(location="")
+    elif loc:
+        items = items.filter(location=loc)
     if SORTS.get(sort):
         items = list(items.order_by(SORTS[sort]))
     else:
@@ -147,6 +153,8 @@ def cards(request):
     total = sum((r["total"] for r in rows), Decimal("0"))
     return render(request, "collection/cards.html", {
         "active_tab": "cards", "rows": rows, "q": q, "sort": sort, "total": total,
+        "locations": locations, "loc": loc, "conditions": CollectionItem.CONDITION_CHOICES,
+        "languages": CollectionItem.LANGUAGE_CHOICES,
         "copies": sum(r["item"].quantity for r in rows),
         "search": found, "show_text": bool(found.highlight),
         "missing_text": Card.objects.filter(items__isnull=False, details_loaded=False).distinct().count(),
@@ -164,10 +172,43 @@ def item_update(request, pk):
     else:
         item.quantity = qty
         item.purchase_price = _decimal_or_none(request.POST.get("purchase_price"))
+        if request.POST.get("condition") in dict(CollectionItem.CONDITION_CHOICES):
+            item.condition = request.POST["condition"]
+        if request.POST.get("language") in dict(CollectionItem.LANGUAGE_CHOICES):
+            item.language = request.POST["language"]
+        if "location" in request.POST:
+            item.location = " ".join(request.POST.get("location", "").split())[:100]
         item.save()
         messages.success(request, f"Updated {item.card.name}.")
     services.record_collection_value()
     return _back(request, "collection:cards")
+
+
+CSV_CONDITIONS = dict(CollectionItem.CONDITION_CHOICES)
+CSV_LANGUAGES = dict(CollectionItem.LANGUAGE_CHOICES)
+
+
+def cards_export(request):
+    """Your collection as a CSV file. The first columns follow Moxfield's collection CSV,
+    so it can be imported there; the last ones add location, price and Scryfall id."""
+    import csv
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="manaledger-collection-{timezone.localdate():%Y-%m-%d}.csv"'
+    response.write("\ufeff")  # so Excel reads the accents in card names correctly
+    out = csv.writer(response)
+    out.writerow(["Count", "Tradelist Count", "Name", "Edition", "Condition", "Language", "Foil", "Tags",
+                  "Last Modified", "Collector Number", "Alter", "Proxy", "Purchase Price",
+                  "Location", "Price Each (USD)", "Value (USD)", "Scryfall ID"])
+    for item in CollectionItem.objects.select_related("card").order_by("card__name", "card__set_code"):
+        c, price = item.card, item.unit_price
+        out.writerow([
+            item.quantity, 0, c.name, c.set_code.lower(), CSV_CONDITIONS.get(item.condition, "Near Mint"),
+            CSV_LANGUAGES.get(item.language, "English"), "" if item.finish == "nonfoil" else item.finish, "",
+            timezone.localtime(item.added_at).strftime("%Y-%m-%d %H:%M:%S"), c.collector_number, "False", "False",
+            item.purchase_price if item.purchase_price is not None else "", item.location,
+            price if price is not None else "", item.total_value if price is not None else "", c.scryfall_id,
+        ])
+    return response
 
 
 @require_POST
@@ -353,8 +394,8 @@ def _sum_quantity(queryset):
 
 
 def _boards(deck):
-    """Deck sections this format uses, plus any section that already has cards."""
-    wanted = ["commander", "main"] if deck.format == "commander" else ["main", "side"]
+    """Deck sections this format uses (the Maybeboard always), plus any section that already has cards."""
+    wanted = ["commander", "main", "maybe"] if deck.format == "commander" else ["main", "side", "maybe"]
     used = set(deck.entries.values_list("board", flat=True))
     return [(k, label) for k, label in DeckCard.BOARD_CHOICES if k in wanted or k in used]
 
@@ -389,14 +430,16 @@ def check_deck_rules(deck, card, board, qty, entry=None):
 
     Returns (allowed_qty, note). Raises RuleError when the change isn't allowed at all.
     """
-    others = DeckCard.objects.filter(deck=deck).select_related("card")
+    if board == "maybe":
+        return qty, ""  # the Maybeboard is a holding pile: no rules until a card moves into the deck
+    others = DeckCard.objects.filter(deck=deck).exclude(board="maybe").select_related("card")
     if entry is not None:
         others = others.exclude(pk=entry.pk)
     others = list(others)
     note = ""
 
-    # Banned or not legal in this format (checked when a card first goes in).
-    if entry is None:
+    # Banned or not legal in this format (checked when a card first goes in, or leaves the Maybeboard).
+    if entry is None or entry.board == "maybe":
         problem = deckrules.legality_problem(deck.format, card.name, card.legalities)
         if problem:
             raise RuleError(problem)
@@ -479,6 +522,7 @@ def _deck_entries(deck, owned=None, by_name=None):
             "limit": _copy_limit(deck, c),
             "game_changer": c.game_changer, "proxies": min(entry.proxies, entry.quantity),
             "power": c.power, "toughness": c.toughness, "loyalty": c.loyalty,
+            "tags": list(entry.tags or []),
         })
     return rows
 
@@ -556,7 +600,13 @@ def deck_detail(request, pk):
     deck = get_object_or_404(Deck.objects.select_related("cover_card").prefetch_related(_with_cards()), pk=pk)
     owned = _owned_counts()
     entries = _deck_entries(deck, owned, _owned_by_name())
-    stats = deckrules.analyze(deck.format, entries)
+    group_by = request.GET.get("group")
+    if group_by in dict(DECK_GROUPS):
+        request.session["deck_group"] = group_by
+    else:
+        group_by = request.session.get("deck_group", "type")
+        group_by = group_by if group_by in dict(DECK_GROUPS) else "type"
+    stats = deckrules.analyze(deck.format, entries, group_by=group_by, tag_order=deck.tag_order)
     bracket = _bracket(deck, entries, stats)
     view = request.GET.get("view")
     if view in dict(DECK_VIEWS):
@@ -603,7 +653,8 @@ def deck_detail(request, pk):
     matches = library.count()
     name_counts = {}
     for e in entries:
-        name_counts[e["name"]] = name_counts.get(e["name"], 0) + e["quantity"]
+        if e["board"] != "maybe":
+            name_counts[e["name"]] = name_counts.get(e["name"], 0) + e["quantity"]
     results = []
     for card in library.order_by("name", "set_code")[:60]:
         have = owned.get(card.id, 0)
@@ -645,7 +696,44 @@ def deck_detail(request, pk):
         "cover_choices": sorted({(e["card_id"], e["name"]) for e in entries if e.get("image_url")}, key=lambda x: x[1]),
         "spellbook_tag_name": brackets.SPELLBOOK_TAG_NAMES.get((deck.spellbook_result or {}).get("bracketTag"), ""),
         "spellbook_bracket": brackets.SPELLBOOK_TAGS.get((deck.spellbook_result or {}).get("bracketTag")),
+        "group_by": group_by, "deck_groups": DECK_GROUPS,
+        "tag_choices": _tag_choices(deck, entries), "tag_sets": TagSet.objects.all(),
+        "export_formats": deckrules.EXPORT_FORMATS, "exports": stats["exports"],
+        "suggested_count": sum(1 for e in entries if e["board"] == "main" and not e["tags"]
+                               and deckrules.suggested_tags(e)),
+        "tokens": _deck_tokens(deck),
     })
+
+
+DECK_GROUPS = [("type", "Card type"), ("tag", "Tag")]
+
+
+def _tag_choices(deck, entries):
+    """Tags to offer when tagging: this deck's tag list, tags already used anywhere, then the defaults."""
+    used = [t for e in entries for t in e.get("tags") or []]
+    everywhere = [t for tags in DeckCard.objects.values_list("tags", flat=True) for t in tags or []]
+    return deckrules.clean_tags(list(deck.tag_order) + used + sorted(set(everywhere)) + deckrules.DEFAULT_TAGS, limit=200)
+
+
+def _deck_tokens(deck):
+    """Tokens and emblems the deck's cards make: [{id, name, type_line, image_url, makers}], plus
+    how many cards haven't had their tokens looked up yet."""
+    tokens, unknown = {}, 0
+    for e in deck.entries.all():
+        if e.board == "maybe":
+            continue
+        c = e.card
+        if c.tokens is None:
+            unknown += 1
+            continue
+        for t in c.tokens:
+            key = (t.get("name"), t.get("type_line"))
+            row = tokens.setdefault(key, {"id": t["id"], "name": t.get("name", ""), "type_line": t.get("type_line", ""),
+                                          "image_url": scryfall.image_for(t["id"]), "makers": []})
+            if c.name not in row["makers"]:
+                row["makers"].append(c.name)
+    rows = sorted(tokens.values(), key=lambda r: (r["type_line"].startswith("Emblem"), r["name"].casefold()))
+    return {"rows": rows, "unknown": unknown}
 
 
 FINISH_PRICE = {"nonfoil": "usd", "foil": "usd_foil", "etched": "usd_etched"}
@@ -757,7 +845,7 @@ def deck_playtest(request, pk):
     deck = get_object_or_404(Deck.objects.prefetch_related(_with_cards()), pk=pk)
     cards, commanders = [], []
     for entry in deck.entries.all():
-        if entry.board == "side":
+        if entry.board in ("side", "maybe"):
             continue
         c = entry.card
         data = {
@@ -840,13 +928,15 @@ def deck_entry_update(request, pk):
     # (or as proxies). Format rules (copy limits, legality) still apply above.
 
     with transaction.atomic():
+        tags = deckrules.clean_tags(request.POST.get("tags", "")) if "tags" in request.POST else entry.tags
         target = DeckCard.objects.filter(deck=deck, card=card, board=board).exclude(pk=entry.pk).first()
         if target:  # moving onto a section that already has this card: merge them
             target.quantity += qty  # check_deck_rules already counted target's copies
+            target.tags = deckrules.clean_tags(list(target.tags or []) + list(tags or []))
             target.save()
             entry.delete()
         else:
-            entry.quantity, entry.board = qty, board
+            entry.quantity, entry.board, entry.tags = qty, board, tags
             if "proxies" in request.POST:
                 entry.proxies = min(_positive_int(request.POST.get("proxies"), entry.proxies), qty)
             elif "proxy" in request.POST or request.POST.get("proxy_form"):
@@ -1711,6 +1801,17 @@ def deck_proxies(request, pk):
     deck = get_object_or_404(Deck.objects.prefetch_related(_with_cards()), pk=pk)
     # No proxies marked yet? Then print the whole deck, unless the page asked otherwise.
     any_proxies = any(min(e.proxies, e.quantity) for e in deck.entries.all())
+    tokens = _deck_tokens(deck)
+    if request.GET.get("all") == "tokens":
+        cards = [{"name": t["name"], "image_url": t["image_url"], "type_line": t["type_line"], "mana_cost": "",
+                  "oracle_text": "Made by " + ", ".join(t["makers"]), "set_code": "", "collector_number": ""}
+                 for t in tokens["rows"]]
+        return render(request, "collection/proxies.html", {
+            "active_tab": "decks", "deck": deck, "pages": [cards[i:i + 9] for i in range(0, len(cards), 9)],
+            "count": len(cards), "everything": False, "mode": "tokens", "token_total": len(tokens["rows"]),
+            "style": "text" if request.GET.get("style") == "text" else "image", "label": False,
+            "proxy_total": sum(min(e.proxies, e.quantity) for e in deck.entries.all() if e.board != "maybe"),
+        })
     everything = request.GET.get("all") == "1" or ("all" not in request.GET and not any_proxies)
     basics = request.GET.get("basics") == "1"
     style = "text" if request.GET.get("style") == "text" else "image"
@@ -1718,6 +1819,8 @@ def deck_proxies(request, pk):
     cards = []
     order = {"commander": 0, "main": 1, "side": 2}
     for e in sorted(deck.entries.all(), key=lambda e: (order.get(e.board, 3), e.card.name)):
+        if e.board == "maybe":
+            continue
         c = e.card
         if everything:
             if c.is_basic_land and not basics:
@@ -1729,8 +1832,9 @@ def deck_proxies(request, pk):
     pages = [cards[i:i + 9] for i in range(0, len(cards), 9)]
     return render(request, "collection/proxies.html", {
         "active_tab": "decks", "deck": deck, "pages": pages, "count": len(cards), "everything": everything,
-        "basics": basics, "style": style, "label": label,
-        "proxy_total": sum(min(e.proxies, e.quantity) for e in deck.entries.all()),
+        "basics": basics, "style": style, "label": label, "mode": "all" if everything else "proxies",
+        "token_total": len(tokens["rows"]),
+        "proxy_total": sum(min(e.proxies, e.quantity) for e in deck.entries.all() if e.board != "maybe"),
     })
 
 
@@ -1780,7 +1884,8 @@ def deck_version_restore(request, pk, version_id):
                 missing += 1
                 continue
             DeckCard.objects.create(deck=deck, card=cards[c["card_id"]], board=c["board"],
-                                    quantity=c["quantity"], proxies=min(c.get("proxies", 0), c["quantity"]))
+                                    quantity=c["quantity"], proxies=min(c.get("proxies", 0), c["quantity"]),
+                                    tags=c.get("tags") or [])
         deck.save(update_fields=["updated_at"])
     when = timezone.localtime(version.created_at)
     msg = f"Restored {deck.name} to the version from {when:%b %-d, %-I:%M %p}. The list you had is saved as a version, so you can switch back."
@@ -1809,29 +1914,161 @@ def deck_put_back(request, pk):
 
 
 
-@require_POST
-def deck_trim(request, pk):
-    """Remove the cards whose Keep box was unticked in the table view.
+BULK_ACTIONS = {"move", "tag", "untag", "proxy", "unproxy", "remove"}
 
-    Only cards that were on the page ("shown") can be removed, so a page that didn't
-    send its checkboxes can never empty the deck. A version is saved first."""
+
+@require_POST
+def deck_bulk(request, pk):
+    """Change several selected cards at once: move to a section, add or remove a tag,
+    mark or unmark proxies, or remove them. Only cards ticked on the page change."""
     deck = get_object_or_404(Deck, pk=pk)
-    shown = {int(x) for x in request.POST.getlist("shown") if x.isdigit()}
-    keep = {int(x) for x in request.POST.getlist("keep") if x.isdigit()}
-    gone = deck.entries.filter(pk__in=shown - keep).select_related("card")
-    cards = list(gone)
-    if not cards:
-        messages.error(request, "Nothing to remove: every card is still ticked Keep.")
-        return _back(request, reverse("collection:deck", args=[deck.pk]))
-    copies = sum(e.quantity for e in cards)
+    back = reverse("collection:deck", args=[deck.pk])
+    ids = {int(x) for x in request.POST.getlist("sel") if x.isdigit()}
+    picked = list(deck.entries.filter(pk__in=ids).select_related("card"))
+    action = request.POST.get("action", "")
+    if not picked:
+        messages.error(request, "Select some cards first: tick the box on each card you want to change.")
+        return _back(request, back)
+    if action not in BULK_ACTIONS:
+        messages.error(request, "Pick what to do with the selected cards.")
+        return _back(request, back)
+    copies = sum(e.quantity for e in picked)
+    count = f"{len(picked)} card{'s' if len(picked) != 1 else ''}"
+    problems, msg = [], ""
     with transaction.atomic():
-        versions.checkpoint(deck, f"Before removing {copies} card{'s' if copies != 1 else ''}")
-        gone.delete()
+        if action in ("move", "remove"):
+            versions.checkpoint(deck, f"Before {'moving' if action == 'move' else 'removing'} {count}")
+        else:
+            versions.checkpoint(deck)
+        if action == "remove":
+            DeckCard.objects.filter(pk__in=[e.pk for e in picked]).delete()
+            names = ", ".join(e.card.name for e in picked[:5]) + (f" and {len(picked) - 5} more" if len(picked) > 5 else "")
+            msg = (f"Removed {copies} card{'s' if copies != 1 else ''} ({names}). "
+                   "Changed your mind? Versions → Restore the version saved just before.")
+        elif action in ("proxy", "unproxy"):
+            for e in picked:
+                e.proxies = 0 if action == "unproxy" or e.card.is_basic_land else e.quantity
+                e.save(update_fields=["proxies"])
+            msg = f"Marked {count} as {'proxies' if action == 'proxy' else 'real cards (not proxies)'}."
+        elif action in ("tag", "untag"):
+            tag = (deckrules.clean_tags(request.POST.get("tag", "")) or [None])[0]
+            if not tag:
+                messages.error(request, "Type the tag to add or remove.")
+                return _back(request, back)
+            for e in picked:
+                if action == "tag":
+                    e.tags = deckrules.clean_tags(list(e.tags or []) + [tag])
+                else:
+                    e.tags = [t for t in e.tags or [] if t.casefold() != tag.casefold()]
+                e.save(update_fields=["tags"])
+            msg = f"{'Tagged' if action == 'tag' else 'Took the tag off'} {count} {'as' if action == 'tag' else ':'} {tag}."
+        else:  # move
+            board = request.POST.get("board", "")
+            if board not in dict(DeckCard.BOARD_CHOICES):
+                messages.error(request, "Pick the section to move the cards to.")
+                return _back(request, back)
+            moved = 0
+            # Cards leaving the Maybeboard last, so cuts made in the same move free up room first.
+            for e in sorted(picked, key=lambda e: e.board == "maybe"):
+                if e.board == board:
+                    continue
+                try:
+                    qty, _note = check_deck_rules(deck, e.card, board, e.quantity, entry=e)
+                except RuleError as exc:
+                    problems.append(f"{e.card.name}: {exc}")
+                    continue
+                target = DeckCard.objects.filter(deck=deck, card=e.card, board=board).exclude(pk=e.pk).first()
+                if qty < e.quantity:  # rules allow only some copies: move those, leave the rest
+                    e.quantity -= qty
+                    e.save(update_fields=["quantity"])
+                    if target:
+                        target.quantity += qty
+                        target.save(update_fields=["quantity"])
+                    else:
+                        DeckCard.objects.create(deck=deck, card=e.card, board=board, quantity=qty, tags=e.tags)
+                elif target:
+                    target.quantity += e.quantity
+                    target.proxies = min(target.quantity, target.proxies + e.proxies)
+                    target.tags = deckrules.clean_tags(list(target.tags or []) + list(e.tags or []))
+                    target.save()
+                    e.delete()
+                else:
+                    e.board = board
+                    e.save(update_fields=["board"])
+                moved += 1
+            label = dict(DeckCard.BOARD_CHOICES)[board].lower()
+            msg = f"Moved {moved} card{'s' if moved != 1 else ''} to the {label}." if moved else ""
         deck.save(update_fields=["updated_at"])
-    names = ", ".join(e.card.name for e in cards[:5]) + (f" and {len(cards) - 5} more" if len(cards) > 5 else "")
-    messages.success(request, f"Removed {copies} card{'s' if copies != 1 else ''} ({names}). "
-                              "Changed your mind? Versions → Restore the version saved just before.")
-    return _back(request, reverse("collection:deck", args=[deck.pk]) + "?view=table")
+    if msg:
+        messages.success(request, msg)
+    if problems:
+        messages.error(request, "Not moved: " + " ".join(problems[:5]) + (f" (and {len(problems) - 5} more)" if len(problems) > 5 else ""))
+    return _back(request, back)
+
+
+@require_POST
+def deck_tags(request, pk):
+    """The deck's tag list: save its order, use or save a tag set, or fill in suggested tags."""
+    deck = get_object_or_404(Deck, pk=pk)
+    back = reverse("collection:deck", args=[deck.pk]) + "#deck-tags"
+    action = request.POST.get("action", "")
+    if action == "order":
+        deck.tag_order = deckrules.clean_tags(request.POST.get("tags", ""), limit=40)
+        deck.save(update_fields=["tag_order", "updated_at"])
+        messages.success(request, f"Saved {len(deck.tag_order)} tag{'s' if len(deck.tag_order) != 1 else ''} for {deck.name}.")
+    elif action == "apply_set":
+        chosen = TagSet.objects.filter(pk=request.POST.get("set")).first()
+        if chosen:
+            deck.tag_order = deckrules.clean_tags(chosen.tags, limit=40)
+            deck.save(update_fields=["tag_order", "updated_at"])
+            messages.success(request, f"{deck.name} now uses the tag set “{chosen.name}”.")
+    elif action == "save_set":
+        name = request.POST.get("name", "").strip()[:60]
+        tags = deckrules.clean_tags(request.POST.get("tags") or deck.tag_order, limit=40)
+        if not name or not tags:
+            messages.error(request, "Give the tag set a name, and add tags to this deck's list first.")
+        else:
+            TagSet.objects.update_or_create(name=name, defaults={"tags": tags})
+            messages.success(request, f"Saved the tag set “{name}” ({len(tags)} tags). Pick it on any deck, or when you make a new one.")
+    elif action == "delete_set":
+        TagSet.objects.filter(pk=request.POST.get("set")).delete()
+        messages.success(request, "Deleted that tag set. Decks keep the tags they already have.")
+    elif action == "fill":
+        versions.checkpoint(deck)
+        filled = 0
+        for e in deck.entries.filter(board="main").select_related("card"):
+            c = e.card
+            if e.tags or "Land" in (c.type_line or "").split("//")[0]:
+                continue
+            tags = deckrules.suggested_tags({"type_line": c.type_line, "oracle_text": c.oracle_text})
+            if tags:
+                e.tags = tags
+                e.save(update_fields=["tags"])
+                filled += 1
+        deck.save(update_fields=["updated_at"])
+        messages.success(request, f"Tagged {filled} card{'s' if filled != 1 else ''} from their rules text. "
+                                  "Change any that are wrong in the Table view or with Select.")
+    return _back(request, back)
+
+
+@require_POST
+def deck_tokens(request, pk):
+    """Look up the tokens made by deck cards the app hasn't checked yet (from Scryfall)."""
+    deck = get_object_or_404(Deck, pk=pk)
+    ids = list(Card.objects.filter(deck_entries__deck=deck, tokens__isnull=True)
+               .distinct().values_list("scryfall_id", flat=True))
+    if ids:
+        try:
+            fresh, _missing = scryfall.get_many(ids)
+        except scryfall.ScryfallError as exc:
+            messages.error(request, f"Couldn't reach Scryfall to look up tokens. {exc}")
+            return redirect(reverse("collection:deck", args=[deck.pk]) + "#tokens")
+        with transaction.atomic():
+            for data in fresh:
+                services.save_card(data)
+    found = len(_deck_tokens(deck)["rows"])
+    messages.success(request, f"{deck.name} makes {found} kind{'s' if found != 1 else ''} of token or emblem.")
+    return redirect(reverse("collection:deck", args=[deck.pk]) + "#tokens")
 
 
 # ------------------------------------------------------------------ Life tracker

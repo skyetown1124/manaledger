@@ -12,7 +12,7 @@ from django.utils.dateparse import parse_datetime
 from . import versions
 
 KEEP_DAYS = 30
-FIELDS = ["description", "target_bracket", "spellbook_result", "source", "source_id", "source_url"]
+FIELDS = ["description", "target_bracket", "spellbook_result", "source", "source_id", "source_url", "tag_order"]
 
 
 def _iso(dt):
@@ -38,7 +38,7 @@ def delete_deck(deck):
     with transaction.atomic():
         gone = DeletedDeck.objects.create(
             name=deck.name, format=deck.format, data=data,
-            size=sum(c["quantity"] for c in cards if c["board"] != "side"))
+            size=sum(c["quantity"] for c in cards if c["board"] not in ("side", "maybe")))
         deck.delete()
     purge()
     return gone
@@ -65,7 +65,7 @@ def restore(gone):
                 skipped += 1
                 continue
             DeckCard.objects.create(deck=deck, card_id=c["card_id"], board=c["board"], quantity=c["quantity"],
-                                    proxies=min(c.get("proxies", 0), c["quantity"]))
+                                    proxies=min(c.get("proxies", 0), c["quantity"]), tags=c.get("tags") or [])
         for v in reversed(d.get("versions", [])):  # oldest first, so ordering stays right
             ver = DeckVersion.objects.create(deck=deck, label=v.get("label", ""), cards=v.get("cards", []),
                                              size=v.get("size", 0))

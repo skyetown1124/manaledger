@@ -16,10 +16,19 @@
       <option value="set" {% if sort == "set" %}selected{% endif %}>Set</option>
       <option value="added" {% if sort == "added" %}selected{% endif %}>Recently added</option>
     </select>
+    {% if locations %}
+      <label for="card-loc">Stored in</label>
+      <select id="card-loc" name="loc" onchange="this.form.submit()">
+        <option value="" {% if not loc %}selected{% endif %}>Anywhere</option>
+        {% for l in locations %}<option value="{{ l }}" {% if l == loc %}selected{% endif %}>{{ l }}</option>{% endfor %}
+        <option value="-" {% if loc == "-" %}selected{% endif %}>No location set</option>
+      </select>
+    {% endif %}
     <button type="submit" class="btn primary">Search</button>
-    {% if q %}<a class="btn ghost" href="{% url 'collection:cards' %}">Clear</a>{% endif %}
+    {% if q or loc %}<a class="btn ghost" href="{% url 'collection:cards' %}">Clear</a>{% endif %}
     <span class="spacer"></span>
     <span class="summary">{{ copies }} cards · <strong>{{ total|money }}</strong></span>
+    <a class="btn small ghost" href="{% url 'collection:cards_export' %}" title="Download your whole collection as a spreadsheet (CSV)">Export CSV</a>
   </form>
 
   {% include "collection/_search_help.html" %}
@@ -36,12 +45,13 @@
   {% endif %}
 
   {% if rows %}
-    <p class="note">Change a quantity or what you paid, then press Save. Set a quantity to 0 to remove the card.</p>
+    <p class="note">Change a quantity, what you paid, the condition, language or where the copies are kept, then press Save. Set a quantity to 0 to remove the card.</p>
+    <datalist id="location-list">{% for l in locations %}<option value="{{ l }}">{% endfor %}</datalist>
     <div class="table-wrap">
       <table class="data cards-table">
         <thead>
           <tr>
-            <th>Card</th><th>Rarity</th><th>Finish</th>
+            <th>Card</th><th>Rarity</th><th>Finish</th><th>Condition · language · location</th>
             <th class="num">Qty</th><th class="num">Paid each</th>
             <th class="num">Price</th><th class="num">Value</th><th class="num">Gain</th><th></th>
           </tr>
@@ -67,6 +77,17 @@
               </td>
               <td><span class="rarity rarity-{{ r.card.rarity }}">{{ r.card.rarity|capfirst }}</span></td>
               <td>{{ r.item.get_finish_display }}</td>
+              <td>
+                <div class="item-details">
+                  <select name="condition" form="update-{{ r.item.pk }}" aria-label="Condition of {{ r.card.name }}">
+                    {% for v, l in conditions %}<option value="{{ v }}" {% if v == r.item.condition %}selected{% endif %}>{{ l }}</option>{% endfor %}
+                  </select>
+                  <select name="language" form="update-{{ r.item.pk }}" aria-label="Language of {{ r.card.name }}">
+                    {% for v, l in languages %}<option value="{{ v }}" {% if v == r.item.language %}selected{% endif %}>{{ l }}</option>{% endfor %}
+                  </select>
+                  <input type="text" name="location" value="{{ r.item.location }}" form="update-{{ r.item.pk }}" list="location-list" maxlength="100" placeholder="Where it's kept" aria-label="Where {{ r.card.name }} is kept">
+                </div>
+              </td>
               <td class="num"><input class="qty" type="number" min="0" name="quantity" id="qty-{{ r.item.pk }}" value="{{ r.item.quantity }}" form="update-{{ r.item.pk }}" aria-label="Quantity of {{ r.card.name }}"></td>
               <td class="num"><input class="paid" type="text" inputmode="decimal" name="purchase_price" id="paid-{{ r.item.pk }}" value="{{ r.item.purchase_price|default_if_none:'' }}" placeholder="—" form="update-{{ r.item.pk }}" aria-label="Price paid per copy of {{ r.card.name }}"></td>
               <td class="num">{{ r.unit_price|money }}</td>

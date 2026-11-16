@@ -142,55 +142,84 @@
   });
 })();
 
-// Keep checkboxes (table view): live count of what the deck will be after removing
-// the unticked cards. Unticked boxes are remembered in this browser until you remove them.
+// Select boxes: tick cards (or a section's "Select all"), then move, tag, proxy or remove them
+// together with the bar at the bottom.
 (function () {
-  const form = document.getElementById("keep-form");
-  const bar = document.getElementById("keep-bar");
+  const form = document.getElementById("bulk-form");
+  const bar = document.getElementById("bulk-bar");
   if (!form || !bar) return;
-  const boxes = Array.from(document.querySelectorAll('input[name="keep"][form="keep-form"]'));
-  const count = document.getElementById("keep-count");
-  const submit = document.getElementById("keep-submit");
-  const storeKey = "manaledger.keep." + location.pathname;
+  const boxes = Array.from(document.querySelectorAll('input[name="sel"][form="bulk-form"]'));
+  const count = document.getElementById("bulk-count");
+  const actions = document.getElementById("bulk-actions");
+  const clear = bar.querySelector("[data-bulk-clear]");
 
-  function load() {
-    try { return new Set(JSON.parse(localStorage.getItem(storeKey) || "[]")); } catch (e) { return new Set(); }
-  }
-  function save() {
-    const off = boxes.filter((b) => !b.checked).map((b) => b.value);
-    try { off.length ? localStorage.setItem(storeKey, JSON.stringify(off)) : localStorage.removeItem(storeKey); } catch (e) { /* not saved */ }
-  }
   function update() {
-    let total = 0, kept = 0, cutCards = 0, cutCopies = 0;
+    let cards = 0, copies = 0;
     boxes.forEach(function (b) {
       const row = b.closest("[data-qty]");
-      const qty = parseInt(row.dataset.qty, 10) || 0;
-      if (row.dataset.board !== "side") total += qty;
-      if (b.checked) { if (row.dataset.board !== "side") kept += qty; }
-      else { cutCards += 1; cutCopies += qty; }
-      row.classList.toggle("cut", !b.checked);
+      if (b.checked) { cards += 1; copies += parseInt(row.dataset.qty, 10) || 0; }
+      row.classList.toggle("picked", b.checked);
     });
-    count.textContent = cutCards
-      ? `${total} cards → ${kept} after removing ${cutCopies} (${cutCards} unticked)`
-      : `${total} cards · untick Keep on cards to cut`;
-    submit.disabled = cutCards === 0;
-    submit.textContent = cutCards ? `Remove ${cutCopies} unticked card${cutCopies === 1 ? "" : "s"}` : "Remove unticked cards";
+    count.textContent = cards
+      ? `${cards} card${cards === 1 ? "" : "s"} selected (${copies} cop${copies === 1 ? "y" : "ies"})`
+      : "Tick Select on cards to change several at once";
+    actions.querySelectorAll("button, select, input").forEach((el) => { el.disabled = cards === 0; });
+    clear.hidden = cards === 0;
+    bar.classList.toggle("active", cards > 0);
   }
+  boxes.forEach((b) => b.addEventListener("change", update));
+  clear.addEventListener("click", function () { boxes.forEach((b) => { b.checked = false; }); update(); });
 
-  const remembered = load();
-  boxes.forEach(function (b) {
-    if (remembered.has(b.value)) b.checked = false;
-    b.addEventListener("change", function () { save(); update(); });
-  });
-  bar.querySelectorAll("[data-keep]").forEach(function (btn) {
+  // "Select all" in a section header: ticks every card in that section (or unticks if all are ticked).
+  document.querySelectorAll("[data-select-group]").forEach(function (btn) {
+    const section = btn.closest(".stk-group, .txt-group") ||
+      (btn.closest(".group-title") && btn.closest(".group-title").nextElementSibling);
+    if (!section) return;
     btn.addEventListener("click", function () {
-      const on = btn.dataset.keep === "all";
-      boxes.forEach((b) => { b.checked = on; });
-      save(); update();
+      const inGroup = boxes.filter((b) => section.contains(b));
+      const on = !inGroup.every((b) => b.checked);
+      inGroup.forEach((b) => { b.checked = on; });
+      update();
     });
   });
-  form.addEventListener("submit", function () {
-    try { localStorage.removeItem(storeKey); } catch (e) { /* fine */ }
+
+  form.addEventListener("submit", function (ev) {
+    const action = ev.submitter && ev.submitter.value;
+    const picked = boxes.filter((b) => b.checked);
+    if (!picked.length) { ev.preventDefault(); return; }
+    if (action === "tag" || action === "untag") {
+      const tag = document.getElementById("bulk-tag");
+      if (!tag.value.trim()) { ev.preventDefault(); tag.focus(); return; }
+    }
   });
   update();
+})();
+
+// Export: switch formats, copy, or download as a .txt file.
+(function () {
+  const pick = document.getElementById("export-format");
+  const box = document.getElementById("export-text");
+  const data = document.getElementById("deck-exports");
+  if (!pick || !box || !data) return;
+  const texts = JSON.parse(data.textContent);
+  const notes = {
+    plain: "One line per card. Works almost anywhere, including store buy-list boxes.",
+    arena: "Paste into MTG Arena: Decks → Import. Arena only knows cards that are on Arena.",
+    mtgo: "Save as a .txt file and import it in MTGO. A Commander deck's commander goes in the sideboard.",
+    moxfield: "Paste into Moxfield's import box. Tags come along as #tags.",
+    archidekt: "Paste into Archidekt's import. Tags become categories; Maybeboard cards stay out of the deck.",
+  };
+  const note = document.getElementById("export-note");
+  pick.addEventListener("change", function () {
+    box.value = texts[pick.value] || "";
+    if (note) note.textContent = notes[pick.value] || "";
+  });
+  const dl = document.getElementById("download-export");
+  if (dl) dl.addEventListener("click", function () {
+    const name = (dl.dataset.name || "deck").replace(/[\\/:*?"<>|]+/g, "").trim() || "deck";
+    const blob = new Blob([box.value.replace(/\n/g, "\r\n")], { type: "text/plain" });
+    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `${name} (${pick.value}).txt` });
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
 })();

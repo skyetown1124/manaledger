@@ -398,7 +398,7 @@ def estimate(entries, intended=None, spellbook=None):
     intended: the bracket the player says the deck is for (1-5) or None
     spellbook: saved Commander Spellbook result {"bracketTag": "R", "twoCardCombos": [...]} or None
     """
-    playing = [e for e in entries if e.get("board", "main") != "side"]
+    playing = [e for e in entries if e.get("board", "main") not in ("side", "maybe")]
     names = sorted({e["name"] for e in playing})
     by_name = {}
     for e in playing:

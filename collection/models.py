@@ -38,6 +38,8 @@ class Card(models.Model):
     usd_foil = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     usd_etched = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     prices_updated = models.DateTimeField(null=True, blank=True)
+    tokens = models.JSONField(null=True, blank=True,
+                              help_text="Tokens and emblems the card makes [{id, name, type_line}] from Scryfall; null until looked up.")
 
     class Meta:
         ordering = ["name", "set_code"]
@@ -72,8 +74,21 @@ class CollectionItem(models.Model):
     ]
 
     card = models.ForeignKey(Card, on_delete=models.CASCADE, related_name="items")
+    CONDITION_CHOICES = [
+        ("NM", "Near Mint"), ("LP", "Lightly Played"), ("MP", "Moderately Played"),
+        ("HP", "Heavily Played"), ("DMG", "Damaged"),
+    ]
+    LANGUAGE_CHOICES = [
+        ("en", "English"), ("es", "Spanish"), ("fr", "French"), ("de", "German"), ("it", "Italian"),
+        ("pt", "Portuguese"), ("ja", "Japanese"), ("ko", "Korean"), ("ru", "Russian"),
+        ("zhs", "Chinese (Simplified)"), ("zht", "Chinese (Traditional)"), ("ph", "Phyrexian"),
+    ]
+
     finish = models.CharField(max_length=10, choices=FINISH_CHOICES, default="nonfoil")
     quantity = models.PositiveIntegerField(default=1)
+    condition = models.CharField(max_length=3, choices=CONDITION_CHOICES, default="NM")
+    language = models.CharField(max_length=3, choices=LANGUAGE_CHOICES, default="en")
+    location = models.CharField(max_length=100, blank=True, help_text="Where these copies are kept, e.g. 'Binder 2' or 'Atraxa deck box'.")
     purchase_price = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True,
         help_text="What you paid per copy (optional).",
@@ -142,6 +157,8 @@ class Deck(models.Model):
         help_text="The Commander bracket you mean this deck for. The app flags it if the deck plays higher.")
     spellbook_result = models.JSONField(null=True, blank=True, help_text="Last Commander Spellbook bracket check.")
     spellbook_checked_at = models.DateTimeField(null=True, blank=True)
+    tag_order = models.JSONField(default=list, blank=True,
+                                 help_text="This deck's tags, in the order the deck list groups them.")
     cover_card = models.ForeignKey("Card", on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
                                    help_text="The card whose art is the deck's cover (default: the commander).")
     source = models.CharField(max_length=20, blank=True, help_text="Where the list came from: 'archidekt', 'precon' or blank")
@@ -165,13 +182,16 @@ class DeckCard(models.Model):
         ("commander", "Commander"),
         ("main", "Main deck"),
         ("side", "Sideboard"),
+        ("maybe", "Maybeboard"),
     ]
+    PLAYING = ("commander", "main")  # boards that count toward the deck (not side or maybe)
 
     deck = models.ForeignKey(Deck, on_delete=models.CASCADE, related_name="entries")
     card = models.ForeignKey(Card, on_delete=models.CASCADE, related_name="deck_entries")
     board = models.CharField(max_length=10, choices=BOARD_CHOICES, default="main")
     quantity = models.PositiveIntegerField(default=1)
     proxies = models.PositiveIntegerField(default=0, help_text="How many of these copies are proxies (stand-ins you play instead of the real card).")
+    tags = models.JSONField(default=list, blank=True, help_text='Your labels for this card in this deck, e.g. ["Ramp", "Card draw"].')
 
     class Meta:
         ordering = ["card__name"]
@@ -375,3 +395,16 @@ class EdhrecPage(models.Model):
 
     def __str__(self):
         return self.slug
+
+
+class TagSet(models.Model):
+    """A saved list of deck tags (like Archidekt's category templates) to reuse on new decks."""
+
+    name = models.CharField(max_length=60, unique=True)
+    tags = models.JSONField(default=list)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name

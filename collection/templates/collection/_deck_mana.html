@@ -1,0 +1,78 @@
+{% load cards %}
+{% with m=stats.mana %}
+{% if stats.deck_count %}
+<section class="panel mana-panel" id="mana">
+  <h3>Mana analysis</h3>
+  <div class="mana-grid">
+    <div>
+      <h4 class="group-title">Color sources vs. colored symbols</h4>
+      {% if m.colors %}
+        <div class="table-wrap">
+          <table class="data mana-table">
+            <thead><tr><th>Color</th><th class="num">Symbols in costs</th><th class="num">Lands that make it</th><th class="num">Other sources</th><th class="bar-col"><span class="sr">Share</span></th></tr></thead>
+            <tbody>
+              {% for c in m.colors %}
+                <tr class="{% if c.short %}short{% endif %}">
+                  <td><span class="ms ms-{{ c.color }}">{{ c.color }}</span></td>
+                  <td class="num">{{ c.pips }} <span class="muted small">({{ c.pip_pct }}%)</span></td>
+                  <td class="num">{{ c.lands }} <span class="muted small">({{ c.src_pct }}%)</span></td>
+                  <td class="num">{{ c.other }}</td>
+                  <td class="bar-col">
+                    <span class="dual-bar" title="Top: share of colored symbols. Bottom: share of land sources.">
+                      <span class="bar bar-{{ c.color }}" style="width: {{ c.pip_pct }}%"></span>
+                      <span class="bar bar-{{ c.color }} src" style="width: {{ c.src_pct }}%"></span>
+                    </span>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if m.short %}
+          <p class="message error small">Your lands make less {% for c in m.short %}{{ c|pips }}{% if not forloop.last %} and {% endif %}{% endfor %} than your spells ask for. Swap some lands for ones that make {% if m.short|length == 1 %}that color{% else %}those colors{% endif %}.</p>
+        {% endif %}
+        <p class="note">Compares each color's share of the mana symbols in your costs with its share of your lands' colors. A land that makes two colors counts for both. "Other sources" are nonland cards that make mana or fetch lands (rocks, dorks, ramp spells). Worked out from card text, so check unusual lands yourself.</p>
+      {% else %}
+        <p class="note">No colored mana symbols yet.</p>
+      {% endif %}
+    </div>
+    <div>
+      <h4 class="group-title">Lands in your opening hand</h4>
+      {% if m.hand %}
+        <div class="hand-bars" role="img" aria-label="Chance of each number of lands in a 7-card hand">
+          {% for h in m.hand %}
+            <div class="hand-bar{% if h.good %} good{% endif %}">
+              <span class="hand-pct">{{ h.pct|floatformat:0 }}%</span>
+              <span class="hand-col"><span style="height: {{ h.bar }}%"></span></span>
+              <span class="hand-k">{{ h.lands }}</span>
+            </div>
+          {% endfor %}
+        </div>
+        <p class="small"><strong>{{ m.keepable }}%</strong> of 7-card hands have 2–4 lands. Chance of 3+ lands by turn 3: <strong>{{ m.by_turn3.play }}%</strong> on the play, <strong>{{ m.by_turn3.draw }}%</strong> on the draw.</p>
+        <p class="note">{{ m.lands }} lands in a {{ m.library }}-card library{% if deck.format == "commander" %} (your commander starts in the command zone){% endif %}. Before mulligans.</p>
+      {% else %}
+        <p class="note">Add at least 7 cards to see opening-hand odds.</p>
+      {% endif %}
+    </div>
+  </div>
+  {% if m.curve %}
+    <h4 class="group-title">Mana curve by color</h4>
+    <div class="table-wrap">
+      <table class="heatmap cmc-grid color-curve">
+        <thead><tr><th scope="col">Color</th>{% for label in m.curve_labels %}<th scope="col">{{ label }}</th>{% endfor %}<th scope="col">Total</th></tr></thead>
+        <tbody>
+          {% for row in m.curve %}
+            <tr>
+              <th scope="row"><span class="ms ms-{{ row.key }}">{{ row.key }}</span> {{ row.label }}</th>
+              {% for cell in row.cells %}<td style="--v: {{ cell.level }}" class="{% if cell.count %}{% if cell.level > 0.55 %}hot{% endif %}{% else %}none{% endif %}">{% if cell.count %}{{ cell.count }}{% endif %}</td>{% endfor %}
+              <td class="total">{{ row.total }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="note">Non-land cards by their colors (cards with two or more colors count as Multicolor) and mana value.</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endwith %}

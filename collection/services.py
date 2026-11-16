@@ -13,7 +13,7 @@ CARD_FIELDS = [
     "type_line", "released_at", "image_url", "scryfall_uri",
     "usd", "usd_foil", "usd_etched",
     "mana_cost", "cmc", "oracle_text", "keywords", "power", "toughness",
-    "loyalty", "color_identity", "legalities", "game_changer",
+    "loyalty", "color_identity", "legalities", "game_changer", "tokens",
 ]
 
 
@@ -100,12 +100,14 @@ def import_to_deck(deck, items, replace=False, add_to_collection=False):
     Returns {"cards": entries added, "copies": copies, "missing": [ids]}."""
     from .models import DeckCard
 
-    boards = {"main", "side", "commander"}
+    from .decks import clean_tags
+
+    boards = {"main", "side", "commander", "maybe"}
     wanted = {}
     for row in items:
         board = row.get("board") if row.get("board") in boards else "main"
         qty = max(1, min(99, int(row["quantity"])))
-        wanted.setdefault(row["id"], []).append((board, qty, row.get("finish", "nonfoil")))
+        wanted.setdefault(row["id"], []).append((board, qty, row.get("finish", "nonfoil"), clean_tags(row.get("tags") or [])))
     fresh, missing = scryfall.get_many(list(wanted))
 
     copies = entries = 0
@@ -114,15 +116,16 @@ def import_to_deck(deck, items, replace=False, add_to_collection=False):
             deck.entries.all().delete()
         for data in fresh:
             card = save_card(data)
-            for board, qty, finish in wanted.get(data["scryfall_id"], []):
+            for board, qty, finish, tags in wanted.get(data["scryfall_id"], []):
                 entry, created = DeckCard.objects.get_or_create(deck=deck, card=card, board=board,
-                                                                defaults={"quantity": qty})
+                                                                defaults={"quantity": qty, "tags": tags})
                 if not created:
                     entry.quantity += qty
+                    entry.tags = clean_tags(list(entry.tags or []) + tags)
                     entry.save()
                 entries += 1
                 copies += qty
-                if add_to_collection:
+                if add_to_collection and board != "maybe":
                     finish = finish if finish in dict(CollectionItem.FINISH_CHOICES) else "nonfoil"
                     item, made = CollectionItem.objects.get_or_create(card=card, finish=finish,
                                                                       defaults={"quantity": qty})
@@ -143,7 +146,7 @@ def rows_to_items(rows):
     for row in rows:
         if row.get("scryfall_id"):
             items.append({"id": row["scryfall_id"], "board": row["board"],
-                          "quantity": row["quantity"], "finish": row["finish"]})
+                          "quantity": row["quantity"], "finish": row["finish"], "tags": row.get("tags") or []})
         elif row.get("set") and row.get("number"):
             by_set.append(row)
         elif row.get("name"):
@@ -154,7 +157,7 @@ def rows_to_items(rows):
         for r in by_set:
             if (r["set"], r["number"]) in ids:
                 items.append({"id": ids[(r["set"], r["number"])], "board": r["board"],
-                              "quantity": r["quantity"], "finish": r["finish"]})
+                              "quantity": r["quantity"], "finish": r["finish"], "tags": r.get("tags") or []})
             elif r.get("name"):
                 by_name.append(r)
     missing = []
@@ -166,7 +169,8 @@ def rows_to_items(rows):
         for r in by_name:
             hit = ids.get(r["name"].lower())
             if hit:
-                items.append({"id": hit, "board": r["board"], "quantity": r["quantity"], "finish": r["finish"]})
+                items.append({"id": hit, "board": r["board"], "quantity": r["quantity"], "finish": r["finish"],
+                              "tags": r.get("tags") or []})
             else:
                 missing.append(r["name"])
     return items, missing

@@ -17,7 +17,7 @@ KEEP = 60  # versions kept per deck (oldest named ones are kept too)
 
 def current_cards(deck):
     return [{"card_id": e.card_id, "name": e.card.name, "board": e.board,
-             "quantity": e.quantity, "proxies": e.proxies}
+             "quantity": e.quantity, "proxies": e.proxies, "tags": list(e.tags or [])}
             for e in deck.entries.select_related("card").order_by("board", "card__name")]
 
 
@@ -42,7 +42,7 @@ def snapshot(deck, label=""):
         return latest
     version = DeckVersion.objects.create(
         deck=deck, label=label[:100], cards=cards,
-        size=sum(c["quantity"] for c in cards if c["board"] != "side"))
+        size=sum(c["quantity"] for c in cards if c["board"] not in ("side", "maybe")))
     _prune(deck)
     return version
 

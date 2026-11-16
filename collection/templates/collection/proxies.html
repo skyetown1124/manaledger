@@ -6,8 +6,9 @@
 <section class="panel no-print">
   <form method="get" class="section-head filters proxy-options">
     <span class="radios" role="radiogroup" aria-label="Which cards">
-      <label><input type="radio" name="all" value="0" {% if not everything %}checked{% endif %} onchange="this.form.submit()"> Cards marked as proxies ({{ proxy_total }})</label>
-      <label><input type="radio" name="all" value="1" {% if everything %}checked{% endif %} onchange="this.form.submit()"> The whole deck</label>
+      <label><input type="radio" name="all" value="0" {% if mode == "proxies" %}checked{% endif %} onchange="this.form.submit()"> Cards marked as proxies ({{ proxy_total }})</label>
+      <label><input type="radio" name="all" value="1" {% if mode == "all" %}checked{% endif %} onchange="this.form.submit()"> The whole deck</label>
+      <label><input type="radio" name="all" value="tokens" {% if mode == "tokens" %}checked{% endif %} onchange="this.form.submit()"> Tokens ({{ token_total }})</label>
     </span>
     {% if everything %}<label class="check"><input type="checkbox" name="basics" value="1" {% if basics %}checked{% endif %} onchange="this.form.submit()"> Include basic lands</label>{% endif %}
     <label for="proxy-style" class="small">Print</label>
@@ -15,8 +16,8 @@
       <option value="image" {% if style == "image" %}selected{% endif %}>Card images</option>
       <option value="text" {% if style == "text" %}selected{% endif %}>Text only (saves ink)</option>
     </select>
-    <input type="hidden" name="label" value="0">
-    <label class="check"><input type="checkbox" name="label" value="1" {% if label %}checked{% endif %} onchange="this.form.submit()"> Mark "Proxy"</label>
+    {% if mode != "tokens" %}<input type="hidden" name="label" value="0">
+    <label class="check"><input type="checkbox" name="label" value="1" {% if label %}checked{% endif %} onchange="this.form.submit()"> Mark "Proxy"</label>{% endif %}
     <noscript><button type="submit" class="btn small">Show</button></noscript>
     <span class="spacer"></span>
     <button type="button" class="btn primary" onclick="window.print()" {% if not count %}disabled{% endif %}>Print {{ count }} card{{ count|pluralize }}</button>
@@ -24,7 +25,7 @@
   <p class="note">Cards print at real size (63 × 88 mm), 9 to a page, with light cut lines. In the print dialog, set scale to 100% (not "fit to page") and turn off headers and footers. {% if style == "image" %}Double-faced cards print their front face.{% endif %}</p>
   <p class="note">Proxies are for playtesting and casual games with friends who are fine with them. They aren't allowed at sanctioned events, and they're never real cards to sell or trade.</p>
   {% if not count %}
-    <div class="message">{% if everything %}This deck has no cards to print.{% else %}No cards in {{ deck.name }} are marked as proxies yet. Tick "Proxy" on a card in the deck list, or press Proxy in "Cards you need". Or pick "The whole deck" above.{% endif %}</div>
+    <div class="message">{% if mode == "tokens" %}No tokens found for this deck yet. On the deck page, press <strong>Look up tokens</strong> under Tokens.{% elif everything %}This deck has no cards to print.{% else %}No cards in {{ deck.name }} are marked as proxies yet. Tick "Proxy" on a card in the deck list, or press Proxy in "Cards you need". Or pick "The whole deck" above.{% endif %}</div>
   {% endif %}
 </section>
 
@@ -40,7 +41,7 @@
             <div class="pt-type">{{ c.type_line }}</div>
             <div class="pt-body">{{ c.oracle_text|linebreaksbr }}</div>
             <div class="pt-foot">
-              <span>{{ c.set_code|upper }} #{{ c.collector_number }}{% if label %} · Proxy{% endif %}</span>
+              <span>{% if c.set_code %}{{ c.set_code|upper }} #{{ c.collector_number }}{% else %}Token{% endif %}{% if label %} · Proxy{% endif %}</span>
               {% if c.power or c.toughness %}<strong>{{ c.power }}/{{ c.toughness }}</strong>{% elif c.loyalty %}<strong>Loyalty {{ c.loyalty }}</strong>{% endif %}
             </div>
           </div>

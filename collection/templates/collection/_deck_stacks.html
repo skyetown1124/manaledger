@@ -3,8 +3,8 @@
   {% for group in stats.groups %}
     <section class="stk-group" aria-label="{{ group.label }}">
       <header class="stk-head">
-        <div><strong>{% if group.label == "Commander" %}♛ {% endif %}{{ group.label }}</strong><span>Qty: {{ group.count }}</span></div>
-        <span>Price: {{ group.value|money }}</span>
+        <div><strong>{% if group.label == "Commander" %}♛ {% endif %}{{ group.label }}</strong><span>Qty: {{ group.count }}{% if group.suggested %} · {{ group.suggested }} suggested{% endif %}{% if group.maybe %} · not counted{% endif %}</span></div>
+        <span>Price: {{ group.value|money }} <button type="button" class="link-btn small" data-select-group>Select all</button></span>
       </header>
       <div class="stk-pile">
         {% for e in group.entries %}
@@ -42,4 +42,4 @@
     </section>
   {% endfor %}
 </div>
-<p class="note">Hover a card (or tab to it) to see all of it and its buttons: <strong>+</strong> / <strong>−</strong> change copies, <strong>★</strong> makes it the deck cover, <strong>i</strong> opens its details. "Need" marks cards you don't own enough of. Switch to <a href="?view=table">Table</a> to move cards between sections or mark proxies.</p>
+<p class="note">Hover a card (or tab to it) to see all of it and its buttons: <strong>+</strong> / <strong>−</strong> change copies, <strong>★</strong> makes it the deck cover, <strong>i</strong> opens its details. "Need" marks cards you don't own enough of. Tick <strong>Select</strong> on cards to move them (for example to the Maybeboard), tag, proxy or remove them together. Switch to <a href="?view=table">Table</a> to tag single cards.</p>

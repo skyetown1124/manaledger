@@ -121,7 +121,7 @@ def user_decks(username):
 def fetch_deck(number):
     """One deck: {"id", "name", "format", "url", "rows": [{scryfall_id, name, set, number, quantity, board, finish}]}.
 
-    Maybeboard-style categories (not included in the deck) and deleted rows are skipped.
+    Maybeboard-style categories (not included in the deck) go to the Maybeboard; other categories become tags. Deleted rows are skipped.
     The premier category (usually "Commander") goes to the command zone; "Sideboard" to the sideboard."""
     data = _get_json(f"{API}{int(number)}/")
     if not isinstance(data, dict) or not isinstance(data.get("cards"), list):
@@ -133,14 +133,17 @@ def fetch_deck(number):
             continue
         names = entry.get("categories") or []
         first = cats.get(names[0], {}) if names else {}
-        if names and first.get("includedInDeck") is False:
-            continue  # Maybeboard, Considering, etc.
         if first.get("isPremier") or (names and names[0].lower() in {"commander", "commanders"}):
             board = "commander"
         elif names and names[0].lower() in {"sideboard", "companion"}:
             board = "side"
+        elif names and first.get("includedInDeck") is False:
+            board = "maybe"  # Maybeboard, Considering, etc.
         else:
             board = "main"
+        special = {"commander", "commanders", "sideboard", "companion", "maybeboard", "considering"}
+        tags = [n for n in names if n.lower() not in special and not cats.get(n, {}).get("isPremier")
+                and cats.get(n, {}).get("includedInDeck") is not False]
         card = entry.get("card") or {}
         modifier = (entry.get("modifier") or "").lower()
         rows.append({
@@ -150,6 +153,7 @@ def fetch_deck(number):
             "number": str(card.get("collectorNumber") or ""),
             "quantity": max(1, int(entry.get("quantity") or 1)),
             "board": board,
+            "tags": tags,
             "finish": "foil" if modifier == "foil" else "etched" if modifier == "etched" else "nonfoil",
         })
     if not rows:

@@ -8,7 +8,7 @@
   <div class="kpi kpi-blue">
     <div class="kpi-label">Cards</div>
     <div class="kpi-value">{{ stats.deck_count }}{% if stats.target %}<span class="kpi-of"> / {{ stats.target }}</span>{% endif %}</div>
-    <div class="kpi-sub">{{ stats.land_count }} lands{% if stats.side_count %} · {{ stats.side_count }} in sideboard{% endif %}{% if stats.proxy_count %} · <a href="{% url 'collection:deck_proxies' deck.pk %}">{{ stats.proxy_count }} prox{{ stats.proxy_count|pluralize:"y,ies" }}</a>{% endif %}</div>
+    <div class="kpi-sub">{{ stats.land_count }} lands{% if stats.side_count %} · {{ stats.side_count }} in sideboard{% endif %}{% if stats.maybe_count %} · {{ stats.maybe_count }} maybe{% endif %}{% if stats.proxy_count %} · <a href="{% url 'collection:deck_proxies' deck.pk %}">{{ stats.proxy_count }} prox{{ stats.proxy_count|pluralize:"y,ies" }}</a>{% endif %}</div>
   </div>
   <div class="kpi kpi-gold">
     <div class="kpi-label">Deck value</div>
@@ -161,14 +161,18 @@
       <nav class="view-switch" aria-label="Deck view">
         {% for value, label in deck_views %}<a href="?view={{ value }}#deck-list" class="{% if value == view %}active{% endif %}" {% if value == view %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
       </nav>
+      <nav class="view-switch group-switch" aria-label="Group cards by">
+        <span class="small muted">Group by</span>
+        {% for value, label in deck_groups %}<a href="?group={{ value }}#deck-list" class="{% if value == group_by %}active{% endif %}" {% if value == group_by %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+      </nav>
       <span class="spacer"></span><span class="summary">{{ stats.deck_count }} cards · {{ stats.value|money }}</span><a class="btn small add-cards-jump" href="#library">＋ Add cards</a>{% if stats.deck_count %}<a class="btn primary small" href="{% url 'collection:deck_playtest' deck.pk %}">Playtest</a>{% endif %}</div>
     {% include "collection/_deck_changes.html" %}
+    {% include "collection/_deck_tags.html" %}
     {% if stats.groups %}
-      <form method="post" action="{% url 'collection:deck_trim' deck.pk %}" id="keep-form" class="keep-form">
+      <form method="post" action="{% url 'collection:deck_bulk' deck.pk %}" id="bulk-form" class="keep-form">
         {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
-        {% for group in stats.groups %}{% for e in group.entries %}<input type="hidden" name="shown" value="{{ e.id }}">{% endfor %}{% endfor %}
       </form>
-      <p class="note keep-help">Trimming the deck? Untick <strong>Keep</strong> on the cards you're cutting, then press <strong>Remove unticked cards</strong> at the bottom. A version is saved first, so you can undo it from Versions.</p>
+      <p class="note keep-help">Tick <strong>Select</strong> on cards (or a section's <strong>Select all</strong>) to move, tag, proxy or remove them together with the bar at the bottom. Moving or removing saves a version first, so you can undo it.</p>
     {% endif %}
     {% if stats.groups and view == "stacks" %}
       {% include "collection/_deck_stacks.html" %}
@@ -176,7 +180,8 @@
       {% include "collection/_deck_text.html" %}
     {% elif stats.groups %}
       {% for group in stats.groups %}
-        <h4 class="group-title">{{ group.label }} <span class="muted">({{ group.count }})</span></h4>
+        <h4 class="group-title">{{ group.label }} <span class="muted">({{ group.count }})</span>{% if group.suggested %} <span class="small muted">· {{ group.suggested }} suggested</span>{% endif %}
+          <button type="button" class="link-btn small" data-select-group>Select all</button></h4>
         <div class="table-wrap">
           <table class="data deck-table">
             <tbody>
@@ -195,6 +200,9 @@
                     <div class="muted small">
                       {% if e.is_basic %}Basic land{% else %}You own {{ e.owned }}{% endif %}{% if e.proxies %} · <span class="proxy-badge">{% if e.quantity > 1 %}{{ e.proxies }} prox{{ e.proxies|pluralize:"y,ies" }}{% else %}Proxy{% endif %}</span>{% endif %}{% if e.elsewhere %} · also in {{ e.elsewhere|join:", " }}{% endif %}
                     </div>
+                    <label class="tag-edit small"><span>Tags</span>
+                      <input type="text" name="tags" value="{{ e.tags|join:', ' }}" form="entry-{{ e.id }}" list="tag-list" placeholder="{% if e.auto_tag %}{{ e.auto_tag }} (suggested){% else %}e.g. Ramp, Card draw{% endif %}" aria-label="Tags for {{ e.name }}, separated by commas">
+                    </label>
                     {% if not e.is_basic %}<div class="proxy-control small">
                       {% if e.quantity == 1 %}
                         <label class="check" title="Play a proxy (stand-in) instead of the real card"><input type="checkbox" name="proxy" value="1" form="entry-{{ e.id }}" {% if e.proxies %}checked{% endif %} onchange="this.form.requestSubmit()"> Proxy</label>
@@ -234,12 +242,30 @@
       </div>
     {% endif %}
     {% if stats.groups %}
-      <div class="keep-bar" id="keep-bar">
-        <span class="keep-count" id="keep-count" aria-live="polite">{{ stats.deck_count }} cards</span>
+      <div class="keep-bar bulk-bar" id="bulk-bar" data-total="{{ stats.deck_count }}">
+        <span class="keep-count" id="bulk-count" aria-live="polite">Nothing selected</span>
+        <button type="button" class="btn small ghost" data-bulk-clear hidden>Clear</button>
         <span class="spacer"></span>
-        <button type="button" class="btn small ghost" data-keep="all">Tick all</button>
-        <button type="button" class="btn small ghost" data-keep="none">Untick all</button>
-        <button type="submit" class="btn small danger" form="keep-form" id="keep-submit" disabled>Remove unticked cards</button>
+        <span class="bulk-actions" id="bulk-actions">
+          <span class="bulk-group">
+            <label class="sr" for="bulk-board">Move selected cards to</label>
+            <select id="bulk-board" name="board" form="bulk-form" class="compact">
+              {% for value, label in boards %}<option value="{{ value }}" {% if value == "main" %}selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+            <button type="submit" class="btn small" form="bulk-form" name="action" value="move">Move</button>
+          </span>
+          <span class="bulk-group">
+            <label class="sr" for="bulk-tag">Tag</label>
+            <input type="text" id="bulk-tag" name="tag" form="bulk-form" list="tag-list" placeholder="Tag" class="compact bulk-tag">
+            <button type="submit" class="btn small" form="bulk-form" name="action" value="tag" title="Add this tag to the selected cards">Tag</button>
+            <button type="submit" class="btn small ghost" form="bulk-form" name="action" value="untag" title="Take this tag off the selected cards">Untag</button>
+          </span>
+          <span class="bulk-group">
+            <button type="submit" class="btn small ghost" form="bulk-form" name="action" value="proxy">Proxy</button>
+            <button type="submit" class="btn small ghost" form="bulk-form" name="action" value="unproxy">Not proxy</button>
+            <button type="submit" class="btn small danger" form="bulk-form" name="action" value="remove">Remove</button>
+          </span>
+        </span>
       </div>
     {% endif %}
     {% include "collection/_deck_removed.html" %}
@@ -261,6 +287,7 @@
 
   <!-- Library search -->
   <div class="panel library-panel" id="library">
+    <datalist id="tag-list">{% for t in tag_choices %}<option value="{{ t }}">{% endfor %}</datalist>
     <div class="section-head"><span>Add cards</span><span class="spacer"></span><span class="small muted" id="library-status" role="status"></span></div>
     <form class="search-row" method="get" role="search" id="library-search" action="#library">
       <input type="hidden" name="view" value="{{ view }}">
@@ -438,15 +465,25 @@
   </div>
   <div class="panel">
     <h3>Export deck list</h3>
-    <p class="note">Plain text that MTG Arena, Moxfield and Archidekt can import.</p>
+    <div class="export-pick">
+      <label for="export-format">Format</label>
+      <select id="export-format" class="compact">
+        {% for value, label in export_formats %}<option value="{{ value }}" {% if value == "moxfield" %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    <p class="note" id="export-note">Paste into Moxfield's import box. Tags come along as #tags.</p>
     <label class="sr" for="export-text">Deck list text</label>
-    <textarea id="export-text" class="export" rows="10" readonly>{{ stats.export }}</textarea>
+    <textarea id="export-text" class="export" rows="10" readonly>{{ exports.moxfield }}</textarea>
     <div class="row-actions">
       <button type="button" class="btn" id="copy-export">Copy deck list</button>
+      <button type="button" class="btn ghost" id="download-export" data-name="{{ deck.name }}">Download .txt</button>
       <span class="small muted" id="copy-status" role="status"></span>
     </div>
   </div>
 </section>
+
+{% include "collection/_deck_mana.html" %}
+{% include "collection/_deck_tokens.html" %}
 
 <section>
   <div class="panel">
@@ -484,6 +521,7 @@
 </section>
 
 {{ chart_data|json_script:"deck-data" }}
+{{ exports|json_script:"deck-exports" }}
 {% endblock %}
 
 {% block scripts %}

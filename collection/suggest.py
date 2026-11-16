@@ -152,7 +152,7 @@ def _commander_has(entries, theme):
 def role_counts(entries):
     counts = Counter()
     for e in entries:
-        if e.get("board") == "side":
+        if e.get("board") in ("side", "maybe"):
             continue
         for r in roles_of(e):
             counts[r] += e.get("quantity", 1)
@@ -173,7 +173,7 @@ def role_gaps(entries, fmt):
 def identity_of(entries):
     """Commander color identity; without a commander, the deck's colors."""
     commanders = [e for e in entries if e.get("board") == "commander"]
-    source = commanders or [e for e in entries if e.get("board") != "side"]
+    source = commanders or [e for e in entries if e.get("board") not in ("side", "maybe")]
     letters = set()
     for e in source:
         letters |= set(e.get("color_identity") or "")
@@ -370,7 +370,7 @@ def suggestions(entries, collection, fmt, intended=None, limit_per_group=8):
             taken.add(pick["name"])
         swaps.append({"cut": entry, "reason": reason, "add": pick, "copies": copies})
 
-    deck_size = sum(e.get("quantity", 1) for e in entries if e.get("board") != "side")
+    deck_size = sum(e.get("quantity", 1) for e in entries if e.get("board") not in ("side", "maybe"))
     return {
         "format": fmt,
         "bracket": est,

@@ -1,0 +1,1 @@
+{% if e.tags %}<span class="tag-chips">{% for t in e.tags %}<span class="tag-chip">{{ t }}</span>{% endfor %}</span>{% elif e.auto_tag %}<span class="tag-chips"><span class="tag-chip auto" title="Suggested from the card's text. Press &quot;Tag suggested cards&quot; to keep it, or tag it yourself.">{{ e.auto_tag }}?</span></span>{% endif %}

@@ -9,10 +9,11 @@ Accepted line formats (the same ones MTG Arena, Moxfield and Archidekt export):
     [2XM] works the same as (2XM).
 
 Section headers put cards in a deck section: "Commander", "Deck" / "Mainboard",
-"Sideboard" (also "Companion"); cards under "Maybeboard" are skipped. Inline tags
-work too: Moxfield's *CMDR*, Archidekt's [Commander] / [Sideboard] / [Maybeboard]
-(other [Category] tags are ignored), and MTGO's "SB:" prefix. Blank lines and
-lines starting with # or // are skipped.
+"Sideboard" (also "Companion"), "Maybeboard" (also "Considering"). Inline tags
+work too: Moxfield's *CMDR* and #tags, Archidekt's [Commander] / [Sideboard] /
+[Maybeboard], and MTGO's "SB:" prefix. Other [Category] and #tag names become the
+card's tags in a deck. Maybeboard cards are never added to your collection. Blank
+lines and lines starting with # or // are skipped.
 """
 import re
 import unicodedata
@@ -37,15 +38,22 @@ SECTION_BOARDS = {
     "deck": "main", "maindeck": "main", "mainboard": "main", "main": "main",
     "sideboard": "side", "companion": "side",
     "commander": "commander", "commanders": "commander",
-    "maybeboard": None, "considering": None,
+    "maybeboard": "maybe", "considering": "maybe",
 }
 BRACKET_TAG_RE = re.compile(r"\s*\[([^\]]*)\]")
 SET_CODE_RE = re.compile(r"^[A-Za-z0-9]{2,6}$")
 
 
+HASH_TAGS_RE = re.compile(r"(?:\s+#!?[^\s#]+)+\s*$")
+
+
 def _board_tags(text):
-    """Pull deck-section tags out of a line. Returns (cleaned text, board or None, skip?)."""
-    board, skip = None, False
+    """Pull deck-section tags out of a line. Returns (cleaned text, board or None, skip?, tags)."""
+    board, skip, tags = None, False, []
+    hashed = HASH_TAGS_RE.search(text)
+    if hashed:  # Moxfield: "1 Sol Ring (CMM) 410 #Ramp #Mana_rock"
+        tags += [t.lstrip("#!").replace("_", " ") for t in hashed.group(0).split()]
+        text = text[:hashed.start()]
     if re.search(r"\*CMDR\*", text, re.I):
         board = "commander"
         text = re.sub(r"\s*\*CMDR\*", "", text, flags=re.I)
@@ -59,13 +67,15 @@ def _board_tags(text):
             continue  # "[2XM]" is a set code, not a tag
         lowered = tag.lower()
         if "maybeboard" in lowered or "considering" in lowered:
-            skip = True
+            board = "maybe"
         elif "commander" in lowered:
             board = "commander"
         elif "sideboard" in lowered:
             board = "side"
+        else:  # Archidekt categories: "[Ramp,Draw{noDeck}]" -> tags Ramp, Draw
+            tags += [re.sub(r"\{[^}]*\}", "", t).strip() for t in tag.split(",")]
         text = text.replace(m.group(0), "", 1)
-    return text.strip(), board, skip
+    return text.strip(), board, skip, [t for t in tags if t]
 
 
 @dataclass
@@ -78,6 +88,7 @@ class Line:
     collector_number: str = ""
     finish: str = "nonfoil"
     board: str = "main"
+    tags: list = field(default_factory=list)
 
     @property
     def identifier(self):
@@ -127,20 +138,24 @@ class ImportResult:
         return sum(m.value for m in self.matches)
 
     def items(self):
-        """Merged {id, quantity, finish} rows, ready to add to the collection."""
+        """Merged {id, quantity, finish} rows, ready to add to the collection (Maybeboard cards left out)."""
         merged = {}
         for m in self.matches:
+            if m.line.board == "maybe":
+                continue
             key = (m.card["scryfall_id"], m.finish)
             merged[key] = merged.get(key, 0) + m.line.quantity
         return [{"id": cid, "finish": fin, "quantity": qty} for (cid, fin), qty in merged.items()]
 
     def deck_items(self):
-        """Merged {id, quantity, board} rows, ready to add to a deck."""
-        merged = {}
+        """Merged {id, quantity, board, tags} rows, ready to add to a deck."""
+        merged, tags = {}, {}
         for m in self.matches:
             key = (m.card["scryfall_id"], m.line.board)
             merged[key] = merged.get(key, 0) + m.line.quantity
-        return [{"id": cid, "board": board, "quantity": qty} for (cid, board), qty in merged.items()]
+            tags.setdefault(key, []).extend(m.line.tags)
+        return [{"id": cid, "board": board, "quantity": qty, "tags": tags[(cid, board)]}
+                for (cid, board), qty in merged.items()]
 
     def board_counts(self):
         counts = {}
@@ -182,7 +197,7 @@ def parse_lines(text):
             continue
         if section is None:
             continue  # maybeboard
-        text_line, tagged_board, skip = _board_tags(text_line)
+        text_line, tagged_board, skip, tags = _board_tags(text_line)
         if skip or not text_line:
             continue
         match = LINE_RE.match(text_line)
@@ -200,7 +215,7 @@ def parse_lines(text):
             set_code=(match.group("set") or "").lower(),
             collector_number=(match.group("cn") or "").lower(),
             finish=finish,
-            board=tagged_board or section,
+            board=tagged_board or section, tags=tags,
         ))
     return lines, problems
 

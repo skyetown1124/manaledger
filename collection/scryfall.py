@@ -198,4 +198,15 @@ def parse_card(raw):
         "usd_foil": _price(prices.get("usd_foil")),
         "usd_etched": _price(prices.get("usd_etched")),
         "finishes": raw.get("finishes", ["nonfoil"]),
+        "tokens": [
+            {"id": part["id"], "name": part.get("name", ""), "type_line": part.get("type_line", "")}
+            for part in raw.get("all_parts") or []
+            if part.get("component") == "token" and part.get("id") and part.get("id") != raw.get("id")
+        ],
     }
+
+
+def image_for(scryfall_id, size="normal"):
+    """Scryfall's image address for a card id (front face), without looking the card up."""
+    sid = scryfall_id or ""
+    return f"https://cards.scryfall.io/{size}/front/{sid[:1]}/{sid[1:2]}/{sid}.jpg" if len(sid) > 2 else ""

@@ -264,16 +264,47 @@ your choice):
 - **Text**: columns of card names and mana costs by type. Hover a card to see
   it in the preview on the right; click it to keep it there and change copies,
   remove it, or make it the cover.
-- **Table**: the editing view, for moving cards between sections and marking
-  proxies. Each card has a **Keep** box: untick the cards you're cutting and the
-  bar at the bottom shows the deck size after removing them ("117 cards → 100"),
-  then press **Remove unticked cards**. Unticked boxes are remembered in your
-  browser until you remove them, and a version is saved first so you can undo it.
+- **Table**: the editing view, for moving single cards between sections,
+  marking proxies and typing a card's tags.
 
 Every view has **−** / **+** next to each card to change the number of copies
-(− on the last copy removes the card; + is greyed out at the format's limit), and
-the same **Keep** boxes and bottom bar, so you can trim the deck from whichever
-view you like.
+(− on the last copy removes the card; + is greyed out at the format's limit).
+
+**Select several cards.** Every card has a **Select** box, and each section has
+**Select all**. Once something is selected, the bar at the bottom can **Move**
+the cards to another section (Main deck, Sideboard, Maybeboard, Commander),
+**Tag** or **Untag** them, mark them as **Proxy** / **Not proxy**, or
+**Remove** them. Moving still follows the format's rules (a card outside your
+commander's colors stays where it was, and the bar says why). Moving or removing
+saves a version first, so you can undo it.
+
+**Maybeboard.** A pile of cards you're considering. It's listed last, doesn't
+count toward the deck size, value, rules checks, bracket, playtest or "Cards you
+need", and cards can go in without passing the format's rules. Move them into
+the deck when you decide. Archidekt and pasted lists bring their Maybeboard
+along (never into your collection).
+
+**Tags.** Label cards in a deck (Ramp, Card draw, Removal, Win condition…) and
+switch **Group by** from *Card type* to *Tag* to see the deck by role. Cards
+without tags are grouped under the tag the app suggests from their rules text,
+shown with a "?"; **Tag N suggested cards** (under Tags above the list) saves
+those suggestions. Set the deck's tag list and its order there too, save it as
+a **tag set**, and use a tag set on another deck. Tags come in from Archidekt
+categories and Moxfield #tags, and go out with the Moxfield and Archidekt exports.
+
+**Mana analysis** (below the mana curve): each color's share of the mana
+symbols in your costs next to its share of your lands (with a warning when a
+color is short), the chance of each number of lands in your opening 7 (and of
+3+ lands by turn 3 on the play and on the draw), and the mana curve split by
+color. Land colors are read from card text, so double-check unusual lands.
+
+**Tokens.** The Tokens panel lists the tokens and emblems the deck's cards make
+and which cards make them. Press **Look up tokens** once (or Refresh prices);
+**Print tokens** opens the proxy sheet with one of each.
+
+**Export** the list as a plain list, MTG Arena, MTGO (.txt), Moxfield (with
+sets and #tags) or Archidekt (with sets and categories), then copy it or
+download it as a .txt file.
 
 **Show changes.** Tick **Show changes** above the deck list to see what's
 different from an earlier version, in any view: cards added are marked **New**,
@@ -467,6 +498,19 @@ The same thing works with a text file:
 python manage.py import_cards my-cards.txt --check   # match only, add nothing
 python manage.py import_cards my-cards.txt
 ```
+
+## Condition, language, location and CSV export
+
+On **My Cards**, each row has the copies' **condition** (Near Mint to Damaged),
+**language** and **where they're kept** (a binder, box or deck box; earlier
+places are suggested as you type). Change them and press Save. **Stored in** at
+the top filters the list to one place, or to cards with no place set. These
+apply to all copies of that printing and finish.
+
+**Export CSV** downloads the whole collection as a spreadsheet. The first
+columns follow Moxfield's collection CSV (Count, Name, Edition, Condition,
+Language, Foil, Collector Number, Purchase Price…); the last ones add the
+location, current price, value and Scryfall id.
 
 ## Searching your cards
 
