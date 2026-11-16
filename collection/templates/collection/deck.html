@@ -55,6 +55,9 @@
       {% if bracket.reasons and bracket.computed > 1 %}
         <ul class="bracket-reasons">{% for r in bracket.reasons %}<li>{{ r }}</li>{% endfor %}</ul>
       {% endif %}
+      {% if bracket.intended and bracket.intended >= 3 and bracket.intended > bracket.computed or bracket.intended == 5 %}
+        <p class="note"><a class="btn small primary" href="{% url 'collection:deck_suggestions' deck.pk %}#upgrade">See the swaps to reach Bracket {{ bracket.intended }}{% if bracket.intended == 5 %} (cEDH){% endif %} →</a></p>
+      {% endif %}
       {% if bracket.low_note %}
         <p class="note">Nothing in the list pushes this deck above Core. Bracket 1 (Exhibition) is for decks built around a theme or idea rather than power; choose it below if that's this deck.</p>
       {% endif %}

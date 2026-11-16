@@ -6,12 +6,12 @@
 {% block content %}
 <section class="panel">
   <div class="section-head">
-    <span>{% if s.target %}Keeping {{ deck.name }} at <strong>Bracket {{ s.target }} · {{ s.target_name }}</strong>{% else %}Cards from your collection for {{ deck.name }}{% endif %}</span>
+    <span>{% if up %}Taking {{ deck.name }} up to <strong>Bracket {{ up.target }} · {{ up.target_name }}</strong>{% elif s.target %}Keeping {{ deck.name }} at <strong>Bracket {{ s.target }} · {{ s.target_name }}</strong>{% else %}Cards from your collection for {{ deck.name }}{% endif %}</span>
     <span class="spacer"></span>
     {% if s.bracket %}
       <form method="post" action="{% url 'collection:deck_bracket' deck.pk %}" class="precon-build">
         {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
-        <label for="target-bracket" class="small">Power level to keep</label>
+        <label for="target-bracket" class="small">Meant for</label>
         <select id="target-bracket" name="target_bracket" class="compact">
           <option value="">Where it plays now (Bracket {{ s.bracket.computed }})</option>
           {% for value, label in bracket_choices %}<option value="{{ value }}" {% if value == deck.target_bracket %}selected{% endif %}>Bracket {{ label }}</option>{% endfor %}
@@ -28,6 +28,8 @@
   </p>
   {% if not deck.entries.exists %}<div class="message">This deck is empty. {% if deck.format == "commander" %}Add a commander first so suggestions can match its colors.{% endif %}</div>{% endif %}
 </section>
+
+{% if up %}{% include "collection/_upgrade_plan.html" %}{% endif %}
 
 {% if edh %}{% include "collection/_edhrec_top.html" %}{% endif %}
 

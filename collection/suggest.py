@@ -214,7 +214,7 @@ def fits_bracket(entries, card, target):
 def cuts_to_reach(entries, target):
     """Cards to cut so the deck plays at `target` or lower. [(entry, reason)]"""
     if target >= 4:
-        return []
+        return [], list(entries)
     working = [e for e in entries]
     cuts = []
 

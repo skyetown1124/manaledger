@@ -2647,3 +2647,64 @@ class CollectionDetailsTests(TestCase):
         result = importer.ImportResult(matches=[importer.Match(l, {"scryfall_id": l.name, "usd": 1}, "nonfoil") for l in lines])
         self.assertEqual([i["id"] for i in result.items()], ["Sol Ring"])
         self.assertEqual({i["id"]: i["board"] for i in result.deck_items()}, {"Sol Ring": "main", "Mana Crypt": "maybe"})
+
+
+class UpgradePlanTests(TestCase):
+    """Raising a deck's intended bracket suggests swaps up to that power level."""
+
+    def setUp(self):
+        self.deck = Deck.objects.create(name="Meren 2", format="commander")
+        boss = make_card("Meren of Clan Nel Toth", type_line="Legendary Creature — Human Shaman",
+                         color_identity="BG", mana_cost="{2}{B}{G}", cmc=4)
+        DeckCard.objects.create(deck=self.deck, card=boss, board="commander")
+        swamp = make_card("Swamp", type_line="Basic Land — Swamp", color_identity="B", usd=0)
+        forest = make_card("Forest", type_line="Basic Land — Forest", color_identity="G", usd=0)
+        DeckCard.objects.create(deck=self.deck, card=swamp, quantity=20)
+        DeckCard.objects.create(deck=self.deck, card=forest, quantity=19)
+        for i in range(60):
+            DeckCard.objects.create(deck=self.deck, card=make_card(
+                f"Big Dumb Beast {i}", type_line="Creature — Beast", color_identity="G", mana_cost="{5}{G}", cmc=6))
+        # Cards the planner may suggest: one owned, others to buy, one off-color.
+        self.tutor = make_card("Demonic Tutor", type_line="Sorcery", color_identity="B", mana_cost="{1}{B}", cmc=2,
+                               oracle_text="Search your library for a card.", game_changer=True, usd=40)
+        CollectionItem.objects.create(card=self.tutor)
+        make_card("Bayou", type_line="Land — Forest Swamp", color_identity="BG", usd=500,
+                  oracle_text="({T}: Add {B} or {G}.)")
+        make_card("Sol Ring", type_line="Artifact", color_identity="", mana_cost="{1}", cmc=1, usd=2,
+                  oracle_text="{T}: Add {C}{C}.")
+        make_card("Force of Will", type_line="Instant", color_identity="U", game_changer=True, usd=80)
+        self.deck.target_bracket = 5
+        self.deck.save()
+
+    def plan_page(self):
+        with mock.patch.object(scryfall, "lookup", return_value=([], [])):
+            return self.client.get(reverse("collection:deck_suggestions", args=[self.deck.pk]))
+
+    def test_plan_pairs_cuts_with_upgrades_in_colors(self):
+        up = self.plan_page().context["up"]
+        adds = {s["add"]["name"]: s for s in up["swaps"]}
+        self.assertIn("Demonic Tutor", adds)
+        self.assertIn("Bayou", adds)
+        self.assertIn("Sol Ring", adds)
+        self.assertNotIn("Force of Will", adds)                 # blue: outside Meren's colors
+        self.assertTrue(adds["Demonic Tutor"]["add"]["owned"])
+        self.assertEqual(adds["Bayou"]["cut"]["name"] in ("Swamp", "Forest"), True)
+        self.assertTrue(adds["Sol Ring"]["cut"]["name"].startswith("Big Dumb Beast")
+                        or adds["Sol Ring"]["cut"]["name"] in ("Swamp", "Forest"))  # cEDH trims extra lands too
+        self.assertEqual(up["buy_cost"], 502.0)
+
+    def test_no_plan_when_not_aiming_higher(self):
+        self.deck.target_bracket = 2
+        self.deck.save()
+        self.assertIsNone(self.plan_page().context["up"])
+
+    def test_apply_swaps(self):
+        up = self.plan_page().context["up"]
+        chosen = [s["key"] for s in up["swaps"] if s["add"]["name"] in ("Demonic Tutor", "Bayou")]
+        self.client.post(reverse("collection:deck_upgrade", args=[self.deck.pk]), {"swap": chosen, "want": "1"})
+        names = set(self.deck.entries.values_list("card__name", flat=True))
+        self.assertTrue({"Demonic Tutor", "Bayou"} <= names)
+        self.assertEqual(sum(self.deck.entries.values_list("quantity", flat=True)), 100)   # one-for-one
+        self.assertTrue(WantItem.objects.filter(card__name="Bayou").exists())             # not owned -> want list
+        self.assertFalse(WantItem.objects.filter(card__name="Demonic Tutor").exists())
+        self.assertTrue(self.deck.versions.filter(label__startswith="Before upgrading").exists())

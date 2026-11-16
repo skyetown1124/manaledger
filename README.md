@@ -315,6 +315,16 @@ those suggestions. Set the deck's tag list and its order there too, save it as
 a **tag set**, and use a tag set on another deck. Tags come in from Archidekt
 categories and Moxfield #tags, and go out with the Moxfield and Archidekt exports.
 
+**Upgrade to a higher bracket.** Set a Commander deck's **Meant for** to a bracket
+above where it plays (or to 5 for cEDH) and its Suggestions page shows an **Upgrade
+to Bracket N** plan: swaps that cut the deck's weakest cards (no clear job, expensive,
+basic or tapped lands, and at cEDH extra lands down to about 31) for stronger ones in
+your commander's colors (fast mana, tutors, cheap and free interaction, card draw,
+better lands and, at Bracket 4-5, a compact win condition). Cards you own come first;
+the rest show their price. Tick the swaps you want and press **Make these swaps** (a
+version is saved first); cards you don't own can go straight on your want list. Add
+`?upgrade=5` to the Suggestions address to preview a plan without changing the setting.
+
 **Mana analysis** (below the mana curve): each color's share of the mana
 symbols in your costs next to its share of your lands (with a warning when a
 color is short), the chance of each number of lands in your opening 7 (and of

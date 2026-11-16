@@ -1138,3 +1138,8 @@ body.selecting-decks .ad-cover { cursor: pointer; }
 .tag-edit input { max-width: 170px; }
 .deck-table td .tag-edit { max-width: 230px; }
 .tag-edit input { width: 100%; flex: 1 1 0; min-width: 0; }
+
+/* ---- Upgrade plan (suggestions page) ---- */
+.up-summary { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin: 4px 0 10px; }
+.upgrade-table td:first-child { width: 28px; }
+.upgrade-table input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--accent); }

@@ -1,0 +1,61 @@
+{% load money cards %}
+<section class="panel upgrade-panel" id="upgrade">
+  <div class="section-head">
+    <span>Upgrade to Bracket {{ up.target }} · {{ up.target_name }}</span>
+    <span class="spacer"></span>
+    <span class="summary">Plays like Bracket {{ up.current }} now (impact {{ up.current_score }}) → about Bracket {{ up.after }} after (impact {{ up.after_score }})</span>
+  </div>
+  {% if up.preview %}<p class="message small">Preview only: {{ deck.name }} is still set to {% if deck.target_bracket %}Bracket {{ deck.target_bracket }}{% else %}no bracket{% endif %}. Making the swaps doesn't change that; set "Meant for" above if you want it to.</p>{% endif %}
+  {% if up.error %}<div class="message error small">{{ up.error }}</div>{% endif %}
+  {% if up.swaps %}
+    <p class="note">
+      Each upgrade replaces one of the deck's weakest cards{% if up.target == 5 %}. cEDH decks win or stop wins from turn 3 on, so this plan adds fast mana, cheap tutors, free interaction, a compact win condition and a faster mana base, and trims lands to about 31 (you have {{ up.land_count }}){% else %}{% endif %}.
+      Cards you own come first. Untick anything you don't want, then press <strong>Make these swaps</strong>; a version of the deck is saved first, so you can undo it.
+    </p>
+    <div class="up-summary">
+      {% for label, n in up.by_kind %}<span class="tag-chip">{{ label }} {{ n }}</span>{% endfor %}
+      <span class="small"><strong>{{ up.owned_count }}</strong> you own · <strong>{{ up.buy_count }}</strong> to buy{% if up.buy_cost %} (about <strong>{{ up.buy_cost|money }}</strong>{% if up.unpriced %}, {{ up.unpriced }} without a price{% endif %}){% endif %}</span>
+    </div>
+    <form method="post" action="{% url 'collection:deck_upgrade' deck.pk %}" id="upgrade-form">
+      {% csrf_token %}
+      <div class="table-wrap">
+        <table class="data upgrade-table">
+          <thead><tr><th><span class="sr">Use</span></th><th>Cut</th><th>Add</th><th>Why</th><th class="num">Price</th></tr></thead>
+          <tbody>
+            {% for w in up.swaps %}
+              <tr>
+                <td><input type="checkbox" name="swap" value="{{ w.key }}" checked aria-label="Swap {{ w.cut.name }} for {{ w.add.name }}"></td>
+                <td><span class="strong">{{ w.cut.name }}</span><div class="small muted">{{ w.cut_why }}</div></td>
+                <td>
+                  <a href="{% url 'collection:card' w.add.card_id %}">{{ w.add.name }}</a> {{ w.add.mana_cost|mana }}
+                  <div class="small"><span class="tag-chip">{{ w.kind_label }}</span>
+                    {% if w.add.owned %}<span class="owned">You own {{ w.add.owned }}</span>{% else %}<span class="muted">Not in your collection</span>{% endif %}</div>
+                </td>
+                <td class="small">{{ w.add.why }}</td>
+                <td class="num">{% if w.add.owned %}<span class="muted">owned</span>{% else %}{{ w.add.price|money }}{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="row-actions">
+        <button type="submit" class="btn primary">Make these swaps</button>
+        <label class="check"><input type="checkbox" name="want" value="1" checked> Put the cards I don't own on my want list</label>
+        <button type="button" class="link-btn" data-up-all="1">Tick all</button>
+        <button type="button" class="link-btn" data-up-all="0">Untick all</button>
+      </div>
+    </form>
+    {% if up.target == 5 %}
+      <p class="note">A list of strong cards isn't a tuned cEDH deck: the best lists are built around one plan and play lots of instant-speed interaction. Compare with your commander's lists on <a href="https://edhtop16.com" target="_blank" rel="noopener">edhtop16</a> once the swaps are in. Prices are for the printing Scryfall lists first; cheaper printings often exist.</p>
+    {% endif %}
+  {% else %}
+    <p class="note">No upgrades found for this deck's colors that it doesn't already play.</p>
+  {% endif %}
+</section>
+<script>
+  document.querySelectorAll("[data-up-all]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      document.querySelectorAll('#upgrade-form input[name="swap"]').forEach(function (c) { c.checked = b.dataset.upAll === "1"; });
+    });
+  });
+</script>

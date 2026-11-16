@@ -38,6 +38,7 @@ urlpatterns = [
     path("decks/<int:pk>/versions/<int:version_id>/restore/", views.deck_version_restore, name="deck_version_restore"),
     path("decks/<int:pk>/put-back/", views.deck_put_back, name="deck_put_back"),
     path("decks/<int:pk>/bulk/", views.deck_bulk, name="deck_bulk"),
+    path("decks/<int:pk>/upgrade/", views.deck_upgrade, name="deck_upgrade"),
     path("decks/<int:pk>/tags/", views.deck_tags, name="deck_tags"),
     path("decks/<int:pk>/tokens/", views.deck_tokens, name="deck_tokens"),
     path("decks/<int:pk>/collect/", views.deck_collect_needed, name="deck_collect_needed"),

@@ -14,7 +14,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from . import decks as deckrules
-from . import archidekt, backup, brackets, edhrec, ticker, importer, suggest, versions, ocr, precons, rules, scryfall, search, services, spellbook, trash
+from . import archidekt, backup, brackets, edhrec, ticker, upgrade, importer, suggest, versions, ocr, precons, rules, scryfall, search, services, spellbook, trash
 from .models import (Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, DeckVersion, DeletedDeck, GlossaryTerm, LinkedProfile, Precon, PriceSnapshot, TagSet, WantItem,
                      Rule, RulesEdition)
 from .stats import build_dashboard
@@ -1465,7 +1465,116 @@ def deck_suggestions(request, pk):
     return render(request, "collection/suggestions.html", {
         "active_tab": "decks", "deck": deck, "s": result, "bracket_choices": Deck.BRACKET_CHOICES,
         "default_board": "main", "edh": _edhrec_block(request, deck, entries),
+        "up": _upgrade_block(deck, entries, result, request.GET.get("upgrade")),
     })
+
+
+def _upgrade_candidates():
+    """{name: card dict} for every card the upgrade planner knows. Cards the app hasn't seen
+    yet are fetched from Scryfall once (75 per request) and saved, so later visits are instant."""
+    names = upgrade.candidate_names()
+    known = {}
+    owned = _owned_by_name()
+    rows = Card.objects.filter(name__in=names).order_by("name", "-details_loaded", "-id")
+    owned_printing = set(CollectionItem.objects.filter(card__name__in=names).values_list("card_id", flat=True))
+    for c in rows:
+        if c.name not in known or (c.id in owned_printing and known[c.name].id not in owned_printing):
+            known[c.name] = c
+    missing = [n for n in names if n not in known]
+    error = None
+    if missing:
+        try:
+            found, _nf = scryfall.lookup([{"name": n} for n in missing])
+            with transaction.atomic():
+                for data in found:
+                    card = services.save_card(data)
+                    known.setdefault(card.name, card)
+        except scryfall.ScryfallError as exc:
+            error = f"Couldn't reach Scryfall for some cards, so the plan only uses cards the app already knows. ({exc})"
+    cards = {}
+    for name, c in known.items():
+        cards[name] = {
+            "card_id": c.id, "name": c.name, "type_line": c.type_line, "oracle_text": c.oracle_text,
+            "mana_cost": c.mana_cost, "cmc": c.cmc, "color_identity": c.color_identity,
+            "legalities": c.legalities or {}, "game_changer": c.game_changer, "price": _f(c.best_price),
+            "image_url": c.image_url, "owned": owned.get(c.name, 0),
+        }
+    return cards, error
+
+
+def _upgrade_block(deck, entries, result, preview=None):
+    """The "Upgrade to Bracket N" plan, when the deck is meant for a higher bracket than it plays
+    (or ?upgrade=N previews one without changing the deck's setting)."""
+    if deck.format != "commander" or not result.get("bracket"):
+        return None
+    target = int(preview) if preview in ("3", "4", "5") else deck.target_bracket
+    computed = result["bracket"]["computed"]
+    if not target or target < 3 or (target <= computed and target < 5):
+        return None
+    cards, error = _upgrade_candidates()
+    plan = upgrade.plan(entries, cards, target)
+    plan["preview"] = target != deck.target_bracket
+    plan["error"] = error
+    return plan
+
+
+@require_POST
+def deck_upgrade(request, pk):
+    """Apply the ticked swaps from the upgrade plan: cut one copy, add the upgrade.
+    Cards you don't own go in the deck anyway (they show under "Cards you need")."""
+    deck = get_object_or_404(Deck, pk=pk)
+    back = reverse("collection:deck_suggestions", args=[deck.pk]) + "#upgrade"
+    pairs = []
+    for value in request.POST.getlist("swap"):
+        cut_id, _, card_id = value.partition(":")
+        if card_id.isdigit():
+            pairs.append((int(cut_id) if cut_id.isdigit() else None, int(card_id)))
+    if not pairs:
+        messages.error(request, "Tick the swaps you want first.")
+        return _back(request, back)
+    want = request.POST.get("want") == "1"
+    done, problems, wanted = 0, [], 0
+    with transaction.atomic():
+        versions.checkpoint(deck, f"Before upgrading to Bracket {deck.target_bracket or ''}".strip())
+        for cut_id, card_id in pairs:
+            card = Card.objects.filter(pk=card_id).first()
+            if card is None:
+                continue
+            cut = deck.entries.filter(pk=cut_id).select_related("card").first() if cut_id else None
+            if cut is not None:  # cut one copy first, so the rules see the room it frees
+                if cut.quantity > 1:
+                    cut.quantity -= 1
+                    cut.proxies = min(cut.proxies, cut.quantity)
+                    cut.save(update_fields=["quantity", "proxies"])
+                else:
+                    cut.delete()
+            try:
+                qty, _note = check_deck_rules(deck, card, "main", 1)
+            except RuleError as exc:
+                problems.append(f"{card.name}: {exc}")
+                if cut is not None:  # put the cut card back
+                    entry, made = DeckCard.objects.get_or_create(deck=deck, card=cut.card, board=cut.board,
+                                                                 defaults={"quantity": 1, "tags": cut.tags})
+                    if not made:
+                        entry.quantity += 1
+                        entry.save(update_fields=["quantity"])
+                continue
+            entry, made = DeckCard.objects.get_or_create(deck=deck, card=card, board="main", defaults={"quantity": 1})
+            if not made:
+                entry.quantity += 1
+                entry.save(update_fields=["quantity"])
+            done += 1
+            if want and not CollectionItem.objects.filter(card__name=card.name).exists():
+                services.add_want(card, deck=deck, note=f"Upgrade for {deck.name}")
+                wanted += 1
+        deck.save(update_fields=["updated_at"])
+    msg = f"Made {done} swap{'s' if done != 1 else ''} in {deck.name}. A version was saved first, so you can undo it from Versions."
+    if wanted:
+        msg += f" Added {wanted} card{'s' if wanted != 1 else ''} you don't own to your want list."
+    messages.success(request, msg)
+    if problems:
+        messages.error(request, "Skipped: " + " ".join(problems[:5]))
+    return redirect(reverse("collection:deck", args=[deck.pk]) + "#bracket")
 
 
 def _edhrec_block(request, deck, entries):
