@@ -153,6 +153,23 @@ QUOTAS = {
 }
 CEDH_LANDS = 31   # cEDH decks run about 28-31 lands thanks to fast mana
 TAPPED_RE = re.compile(r"enters(?: the battlefield)? tapped", re.I)
+BASIC_TYPES = {"Plains": "W", "Island": "U", "Swamp": "B", "Mountain": "R", "Forest": "G"}
+COLORLESS_LANDS = {"Ancient Tomb", "City of Traitors", "Gemstone Caverns", "Cavern of Souls", "Crystal Vein"}
+
+
+def land_fits(name, card, identity):
+    """A land is worth suggesting when it makes (or fetches) the deck's colors."""
+    if name in COLORLESS_LANDS:
+        return True
+    text = card.get("oracle_text") or ""
+    why = STAPLES.get(name, ("", ""))[1]
+    fetched = re.search(r"\(([A-Za-z]+)/([A-Za-z]+)\)", why)
+    if fetched:  # fetch lands: both basic types should be your colors (one, in a mono-color deck)
+        colors = {BASIC_TYPES.get(fetched.group(1)), BASIC_TYPES.get(fetched.group(2))}
+        return len(colors & identity) >= min(2, len(identity))
+    from .decks import produced_colors
+    made = produced_colors(card, identity)
+    return bool(made & identity) or not identity
 
 
 def candidate_names():
@@ -165,10 +182,10 @@ def candidate_names():
 
 def _kind(name, card):
     """The planner's bucket for a candidate: land, fast_mana, tutor, interaction, draw, engine or game_changer."""
-    if is_land(card):
-        return "land"
     if brackets.is_game_changer(card):
         return GC_KIND.get(name)  # None: a Game Changer the planner doesn't suggest
+    if is_land(card):
+        return "land"
     hit = brackets.IMPACT_CARDS.get(name)
     if hit:
         cat = hit[1]
@@ -242,6 +259,10 @@ def plan(entries, candidates, target, max_swaps=40):
         hit = brackets.IMPACT_CARDS.get(name)
         if kind is None or (hit and hit[1] in ("stax", "unfun") and target < 5):
             continue  # locks and game-warping cards only for cEDH
+        if kind == "land" and not land_fits(name, card, identity):
+            continue
+        if kind == "fast_mana" and (card.get("cmc") or 0) >= 4:
+            continue  # big mana (Nyxbloom Ancient) isn't fast
         gc = brackets.is_game_changer(card)
         pts = (8 if gc else 0) + (hit[0] * 2 if hit else 0) + (3 if name in STAPLES else 0)
         pts += 6 if card.get("owned") else 0

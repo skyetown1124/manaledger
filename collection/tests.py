@@ -2708,3 +2708,17 @@ class UpgradePlanTests(TestCase):
         self.assertTrue(WantItem.objects.filter(card__name="Bayou").exists())             # not owned -> want list
         self.assertFalse(WantItem.objects.filter(card__name="Demonic Tutor").exists())
         self.assertTrue(self.deck.versions.filter(label__startswith="Before upgrading").exists())
+
+
+class UpgradeLandTests(TestCase):
+    def test_lands_must_fit_the_colors(self):
+        from . import upgrade
+        ident = set("BG")
+        mk = lambda n, text="", t="Land": {"name": n, "type_line": t, "oracle_text": text}
+        self.assertTrue(upgrade.land_fits("Verdant Catacombs", mk("Verdant Catacombs"), ident))
+        self.assertFalse(upgrade.land_fits("Arid Mesa", mk("Arid Mesa"), ident))
+        self.assertFalse(upgrade.land_fits("Misty Rainforest", mk("Misty Rainforest"), ident))  # only one color
+        self.assertTrue(upgrade.land_fits("Bayou", mk("Bayou", "({T}: Add {B} or {G}.)", "Land — Forest Swamp"), ident))
+        self.assertFalse(upgrade.land_fits("Tundra", mk("Tundra", "({T}: Add {W} or {U}.)", "Land — Plains Island"), ident))
+        self.assertTrue(upgrade.land_fits("Ancient Tomb", mk("Ancient Tomb", "{T}: Add {C}{C}."), ident))
+        self.assertIsNone(upgrade._kind("Glacial Chasm", {"name": "Glacial Chasm", "type_line": "Land", "game_changer": True}))
