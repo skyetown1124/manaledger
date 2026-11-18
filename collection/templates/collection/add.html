@@ -4,14 +4,15 @@
 
 {% block content %}
 <section class="panel">
-  <form class="section-head filters" method="get" autocomplete="off">
+  <form class="section-head filters" method="get" autocomplete="off" id="add-search">
     <label for="card-name">Card name</label>
-    <input type="search" id="card-name" name="q" value="{{ q }}" placeholder="e.g. Sol Ring" list="name-suggestions" data-autocomplete="{% url 'collection:autocomplete' %}" required>
+    <input type="search" id="card-name" name="q" value="{{ q }}" placeholder="e.g. Sol Ring" list="name-suggestions" data-autocomplete="{% url 'collection:autocomplete' %}">
     <datalist id="name-suggestions"></datalist>
     <label for="card-set">Set code</label>
     <input type="text" id="card-set" name="set" value="{{ set_code }}" placeholder="optional, e.g. cmm" class="short">
     <button type="submit" class="btn primary">Search Scryfall</button>
   </form>
+  {% url 'collection:add' as clear_url %}{% include "collection/_advanced_search.html" with form_id="add-search" scope="scryfall" clear_url=clear_url %}
   <p class="note">Every printing of the card is listed, newest first. Pick the one you own, choose foil or non-foil, and add it. If you already own that printing, the copies are added to what you have.</p>
 
   {% if error %}

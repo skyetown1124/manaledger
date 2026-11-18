@@ -318,3 +318,47 @@ def advanced(params):
 def has_advanced(params):
     return any(params.getlist(k) and any(v.strip() for v in params.getlist(k)) for k in ADV_FIELDS
                if k not in ("adv_colormode", "adv_mvop"))
+
+
+def to_scryfall(params):
+    """The Advanced search form as a Scryfall query string (for searching every card, not just yours)."""
+    get = lambda k: (params.get(k) or "").strip()
+    quote = lambda v: '"' + v.replace('"', "") + '"'
+    parts = []
+    if get("adv_name"):
+        parts.append(f"name:{quote(get('adv_name'))}")
+    if get("adv_text"):
+        parts.append(f"o:{quote(get('adv_text'))}")
+    for t in params.getlist("adv_type"):
+        if t in CARD_TYPES:
+            parts.append(f"t:{t.lower()}")
+    if get("adv_subtype"):
+        parts.append(f"t:{quote(get('adv_subtype'))}")
+    picked = params.getlist("adv_color")
+    colors = "".join(c for c in COLORS if c in picked).lower()
+    if colors:
+        parts.append({"exact": "c=", "atmost": "c<="}.get(get("adv_colormode"), "c>=") + colors)
+    if "C" in picked:
+        parts.append("c:c")
+    if "M" in picked:
+        parts.append("c:m")
+    ident = params.getlist("adv_identity")
+    letters = "".join(c for c in COLORS if c in ident).lower()
+    if letters or "C" in ident:
+        parts.append(f"id<={letters or 'c'}")
+    if get("adv_mv") and get("adv_mv").replace(".", "", 1).isdigit():
+        parts.append("mv" + MV_OPS.get(get("adv_mvop"), "=") + get("adv_mv"))
+    rarities = [r for r in params.getlist("adv_rarity") if r in ("common", "uncommon", "rare", "mythic")]
+    if rarities:
+        parts.append("(" + " or ".join(f"r:{r}" for r in rarities) + ")" if len(rarities) > 1 else f"r:{rarities[0]}")
+    if get("adv_set") and re.fullmatch(r"[A-Za-z0-9]{2,6}", get("adv_set")):
+        parts.append(f"s:{get('adv_set').lower()}")
+    if get("adv_artist"):
+        parts.append(f"a:{quote(get('adv_artist'))}")
+    if get("adv_format") and FORMAT_RE.match(get("adv_format")):
+        parts.append(f"f:{get('adv_format')}")
+    if "commander" in params.getlist("adv_is"):
+        parts.append("is:commander")
+    if get("adv_finish") in ("foil", "etched"):
+        parts.append(f"is:{get('adv_finish')}")
+    return " ".join(parts)

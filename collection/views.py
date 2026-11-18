@@ -162,7 +162,7 @@ def cards(request):
     return render(request, "collection/cards.html", {
         "active_tab": "cards", "rows": rows, "q": q, "sort": sort, "total": total,
         "locations": locations, "loc": loc, "conditions": CollectionItem.CONDITION_CHOICES,
-        "adv": _advanced_form(request.GET), "adv_active": bool(adv),
+        "adv": _advanced_form(request.GET), "adv_active": bool(adv), "adv_count": len(adv.descriptions) if adv else 0,
         "languages": CollectionItem.LANGUAGE_CHOICES,
         "copies": sum(r["item"].quantity for r in rows),
         "search": found, "show_text": bool(found.highlight),
@@ -252,13 +252,17 @@ def item_delete(request, pk):
 def add_cards(request):
     q = request.GET.get("q", "").strip()
     set_code = request.GET.get("set", "").strip().lower()
+    adv = search.has_advanced(request.GET)
     results, error = [], None
-    if q:
+    if q or adv:
         try:
             extra = f" set:{set_code}" if set_code else ""
-            results = scryfall.search(f'!"{q}"{extra}')  # exact name first
+            if adv:
+                extra += " " + search.to_scryfall(request.GET)
+            results = scryfall.search(f'!"{q}"{extra}') if q else []  # exact name first
             if not results:
-                results = scryfall.search(f"{q}{extra}")
+                # A broad advanced search lists one printing per card; a name lists every printing.
+                results = scryfall.search(f"{q}{extra}".strip(), unique="cards" if adv and not q else "prints")
         except scryfall.ScryfallError as exc:
             error = str(exc)
     owned = {}
@@ -273,6 +277,8 @@ def add_cards(request):
         ]
     return render(request, "collection/add.html", {
         "active_tab": "add", "q": q, "set_code": set_code, "results": results, "error": error,
+        "adv": _advanced_form(request.GET), "adv_active": adv,
+        "adv_count": len(search.advanced(request.GET).descriptions) if adv else 0,
     })
 
 
@@ -663,6 +669,11 @@ def deck_detail(request, pk):
     # Library panel: cards you own, with how many copies are still free for this deck.
     q = request.GET.get("q", "").strip()
     found = search.parse(q)
+    adv = search.advanced(request.GET) if search.has_advanced(request.GET) else None
+    if adv:
+        found.q &= adv.q
+        found.descriptions += adv.descriptions
+        found.errors += adv.errors
     commander_colors = "".join(sorted(
         {c for e in entries if e["board"] == "commander" for c in (e["color_identity"] or "")},
         key="WUBRG".index,
@@ -671,8 +682,10 @@ def deck_detail(request, pk):
     fit = deck.format == "commander" and has_commander and request.GET.get("fit", "1") != "0"
 
     library = Card.objects.filter(items__isnull=False).distinct()
-    if q:
+    if q or adv:
         library = library.filter(found.q)
+    if adv and adv.item_filters.get("finish"):
+        library = library.filter(items__finish=adv.item_filters["finish"])
     if fit:
         library = library.filter(search.identity_q(commander_colors))
     in_deck = {}
@@ -698,8 +711,9 @@ def deck_detail(request, pk):
     # "All cards" mode: search Scryfall for cards you don't own yet, to add to your collection.
     source = "all" if request.GET.get("src") == "all" else "lib"
     all_results, all_error = [], None
-    if source == "all" and len(q) >= 2:
-        all_results, all_error = _search_all_cards(q, commander_colors if fit else "")
+    if source == "all" and (len(q) >= 2 or adv):
+        all_results, all_error = _search_all_cards(q, commander_colors if fit else "",
+                                                   extra=search.to_scryfall(request.GET) if adv else "")
 
     boards = _boards(deck)
     # Where the library's Add buttons come back to: this page (without the live-search
@@ -710,6 +724,7 @@ def deck_detail(request, pk):
     template = "collection/_library_results.html" if request.GET.get("partial") == "library" else "collection/deck.html"
     return render(request, template, {
         "library_back": library_back, "source": source, "all_results": all_results, "all_error": all_error,
+        "adv": _advanced_form(request.GET), "adv_active": bool(adv), "adv_count": len(adv.descriptions) if adv else 0,
         "active_tab": "decks", "deck": deck, "stats": stats, "boards": boards,
         "default_board": "commander" if deck.format == "commander" and not has_commander else "main",
         "formats": Deck.FORMAT_CHOICES, "q": q, "search": found, "results": results,
@@ -767,14 +782,15 @@ def _deck_tokens(deck):
 FINISH_PRICE = {"nonfoil": "usd", "foil": "usd_foil", "etched": "usd_etched"}
 
 
-def _search_all_cards(q, identity="", limit=24):
+def _search_all_cards(q, identity="", limit=24, extra=""):
     """Scryfall search for the deck page's "All cards" mode. An exact name lists its printings;
-    anything else lists one printing per card. Returns (results, error)."""
+    anything else lists one printing per card. `extra`: Advanced search filters in Scryfall's syntax.
+    Returns (results, error)."""
     fit = f" id<={identity}" if identity else ""
     try:
-        results = scryfall.search(f'!"{q}"{fit}', limit=limit)
+        results = scryfall.search(f'!"{q}"{fit} {extra}'.strip(), limit=limit) if q else []
         if not results:
-            results = scryfall.search(f"{q}{fit}", unique="cards", limit=limit)
+            results = scryfall.search(f"{q}{fit} {extra}".strip(), unique="cards", limit=limit)
     except scryfall.ScryfallError as exc:
         return [], str(exc)
     held = {}

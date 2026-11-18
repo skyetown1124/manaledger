@@ -1,26 +1,31 @@
-{# Advanced search: plain form fields instead of typed filters. Fields belong to the search form above (form="card-search"). #}
-<details class="adv-search" id="advanced-search" {% if adv_active %}open{% endif %}>
-  <summary><strong>Advanced search</strong> <span class="muted small">Search by type, color, mana value, rarity, set, artist and more</span></summary>
+{# Advanced search: plain form fields instead of typed filters. Fields belong to the search form above (form="{{ form_id }}"). #}
+<details class="adv-search" id="advanced-search-{{ form_id }}" data-remember="adv-open-{{ scope }}">
+  <summary>
+    <span class="adv-caret" aria-hidden="true">▸</span>
+    <strong>Advanced search</strong>
+    {% if adv_count %}<span class="adv-on">{{ adv_count }} filter{{ adv_count|pluralize }} on</span>{% endif %}
+    <span class="muted small adv-hint">Type, color, mana value, rarity, set, artist and more</span>
+  </summary>
   <div class="adv-grid">
     <label class="adv-field"><span>Card name</span>
-      <input type="text" name="adv_name" value="{{ adv.v.adv_name }}" form="card-search" placeholder="e.g. Sol Ring"></label>
+      <input type="text" name="adv_name" value="{{ adv.v.adv_name }}" form="{{ form_id }}" placeholder="e.g. Sol Ring"></label>
     <label class="adv-field"><span>Rules text contains</span>
-      <input type="text" name="adv_text" value="{{ adv.v.adv_text }}" form="card-search" placeholder="e.g. draw a card"></label>
+      <input type="text" name="adv_text" value="{{ adv.v.adv_text }}" form="{{ form_id }}" placeholder="e.g. draw a card"></label>
 
     <fieldset class="adv-field adv-wide"><legend>Card type</legend>
       <div class="adv-checks">
-        {% for t in adv.types %}<label class="pill-check"><input type="checkbox" name="adv_type" value="{{ t }}" form="card-search" {% if t in adv.lists.adv_type %}checked{% endif %}><span>{{ t }}</span></label>{% endfor %}
+        {% for t in adv.types %}<label class="pill-check"><input type="checkbox" name="adv_type" value="{{ t }}" form="{{ form_id }}" {% if t in adv.lists.adv_type %}checked{% endif %}><span>{{ t }}</span></label>{% endfor %}
       </div>
-      <input type="text" name="adv_subtype" value="{{ adv.v.adv_subtype }}" form="card-search" placeholder="Subtype, e.g. Elf, Equipment, Saga" aria-label="Subtype">
+      <input type="text" name="adv_subtype" value="{{ adv.v.adv_subtype }}" form="{{ form_id }}" placeholder="Subtype, e.g. Elf, Equipment, Saga" aria-label="Subtype">
     </fieldset>
 
     <fieldset class="adv-field"><legend>Colors</legend>
       <div class="adv-checks">
-        {% for code, name in adv.colors %}<label class="pill-check" title="{{ name }}"><input type="checkbox" name="adv_color" value="{{ code }}" form="card-search" {% if code in adv.lists.adv_color %}checked{% endif %}><span><span class="ms ms-{{ code }}">{{ code }}</span> {{ name }}</span></label>{% endfor %}
-        <label class="pill-check"><input type="checkbox" name="adv_color" value="C" form="card-search" {% if "C" in adv.lists.adv_color %}checked{% endif %}><span>Colorless</span></label>
-        <label class="pill-check"><input type="checkbox" name="adv_color" value="M" form="card-search" {% if "M" in adv.lists.adv_color %}checked{% endif %}><span>Multicolor</span></label>
+        {% for code, name in adv.colors %}<label class="pill-check" title="{{ name }}"><input type="checkbox" name="adv_color" value="{{ code }}" form="{{ form_id }}" {% if code in adv.lists.adv_color %}checked{% endif %}><span><span class="ms ms-{{ code }}">{{ code }}</span> {{ name }}</span></label>{% endfor %}
+        <label class="pill-check"><input type="checkbox" name="adv_color" value="C" form="{{ form_id }}" {% if "C" in adv.lists.adv_color %}checked{% endif %}><span>Colorless</span></label>
+        <label class="pill-check"><input type="checkbox" name="adv_color" value="M" form="{{ form_id }}" {% if "M" in adv.lists.adv_color %}checked{% endif %}><span>Multicolor</span></label>
       </div>
-      <select name="adv_colormode" form="card-search" aria-label="How to match colors">
+      <select name="adv_colormode" form="{{ form_id }}" aria-label="How to match colors">
         <option value="" {% if not adv.v.adv_colormode %}selected{% endif %}>Including these colors (maybe more)</option>
         <option value="exact" {% if adv.v.adv_colormode == "exact" %}selected{% endif %}>Exactly these colors</option>
         <option value="atmost" {% if adv.v.adv_colormode == "atmost" %}selected{% endif %}>Only these colors (or fewer)</option>
@@ -29,16 +34,16 @@
 
     <fieldset class="adv-field"><legend>Fits a Commander deck of colors</legend>
       <div class="adv-checks">
-        {% for code, name in adv.colors %}<label class="pill-check" title="{{ name }}"><input type="checkbox" name="adv_identity" value="{{ code }}" form="card-search" {% if code in adv.lists.adv_identity %}checked{% endif %}><span><span class="ms ms-{{ code }}">{{ code }}</span></span></label>{% endfor %}
-        <label class="pill-check"><input type="checkbox" name="adv_identity" value="C" form="card-search" {% if "C" in adv.lists.adv_identity %}checked{% endif %}><span>Colorless only</span></label>
+        {% for code, name in adv.colors %}<label class="pill-check" title="{{ name }}"><input type="checkbox" name="adv_identity" value="{{ code }}" form="{{ form_id }}" {% if code in adv.lists.adv_identity %}checked{% endif %}><span><span class="ms ms-{{ code }}">{{ code }}</span></span></label>{% endfor %}
+        <label class="pill-check"><input type="checkbox" name="adv_identity" value="C" form="{{ form_id }}" {% if "C" in adv.lists.adv_identity %}checked{% endif %}><span>Colorless only</span></label>
       </div>
       <span class="small muted">Cards whose color identity fits inside the colors you tick.</span>
     </fieldset>
 
     <div class="adv-field"><span>Mana value</span>
       <div class="adv-inline">
-        <input type="number" name="adv_mv" min="0" max="20" value="{{ adv.v.adv_mv }}" form="card-search" aria-label="Mana value" class="qty">
-        <select name="adv_mvop" form="card-search" aria-label="Mana value comparison">
+        <input type="number" name="adv_mv" min="0" max="20" value="{{ adv.v.adv_mv }}" form="{{ form_id }}" aria-label="Mana value" class="qty">
+        <select name="adv_mvop" form="{{ form_id }}" aria-label="Mana value comparison">
           {% for code, label in adv.mvops %}<option value="{{ code }}" {% if adv.v.adv_mvop == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
         </select>
       </div>
@@ -46,28 +51,32 @@
 
     <fieldset class="adv-field"><legend>Rarity</legend>
       <div class="adv-checks">
-        {% for r in adv.rarities %}<label class="pill-check"><input type="checkbox" name="adv_rarity" value="{{ r }}" form="card-search" {% if r in adv.lists.adv_rarity %}checked{% endif %}><span>{{ r|capfirst }}</span></label>{% endfor %}
+        {% for r in adv.rarities %}<label class="pill-check"><input type="checkbox" name="adv_rarity" value="{{ r }}" form="{{ form_id }}" {% if r in adv.lists.adv_rarity %}checked{% endif %}><span>{{ r|capfirst }}</span></label>{% endfor %}
       </div>
     </fieldset>
 
     <label class="adv-field"><span>Set</span>
-      <select name="adv_set" form="card-search">
+      {% if scope == "scryfall" %}
+        <input type="text" name="adv_set" value="{{ adv.v.adv_set }}" form="{{ form_id }}" placeholder="Set code, e.g. cmm" maxlength="6">
+      {% else %}
+      <select name="adv_set" form="{{ form_id }}">
         <option value="">Any set</option>
         {% for code, name in adv.sets %}<option value="{{ code }}" {% if adv.v.adv_set == code %}selected{% endif %}>{{ name }} ({{ code|upper }})</option>{% endfor %}
-      </select></label>
+      </select>
+      {% endif %}</label>
 
     <label class="adv-field"><span>Artist</span>
-      <input type="text" name="adv_artist" value="{{ adv.v.adv_artist }}" form="card-search" list="artist-list" placeholder="Any artist">
+      <input type="text" name="adv_artist" value="{{ adv.v.adv_artist }}" form="{{ form_id }}" list="artist-list" placeholder="Any artist">
       <datalist id="artist-list">{% for a in adv.artists %}<option value="{{ a }}">{% endfor %}</datalist></label>
 
     <label class="adv-field"><span>Legal in</span>
-      <select name="adv_format" form="card-search">
+      <select name="adv_format" form="{{ form_id }}">
         <option value="">Any format</option>
         {% for f in adv.formats %}<option value="{{ f }}" {% if adv.v.adv_format == f %}selected{% endif %}>{{ f|capfirst }}</option>{% endfor %}
       </select></label>
 
     <label class="adv-field"><span>Finish</span>
-      <select name="adv_finish" form="card-search">
+      <select name="adv_finish" form="{{ form_id }}">
         <option value="">Any finish</option>
         <option value="nonfoil" {% if adv.v.adv_finish == "nonfoil" %}selected{% endif %}>Non-foil</option>
         <option value="foil" {% if adv.v.adv_finish == "foil" %}selected{% endif %}>Foil</option>
@@ -76,14 +85,26 @@
 
     <fieldset class="adv-field"><legend>Only cards that</legend>
       <div class="adv-checks">
-        <label class="pill-check"><input type="checkbox" name="adv_is" value="commander" form="card-search" {% if "commander" in adv.lists.adv_is %}checked{% endif %}><span>Can be a commander</span></label>
-        <label class="pill-check"><input type="checkbox" name="adv_is" value="signed" form="card-search" {% if "signed" in adv.lists.adv_is %}checked{% endif %}><span>Are signed</span></label>
+        <label class="pill-check"><input type="checkbox" name="adv_is" value="commander" form="{{ form_id }}" {% if "commander" in adv.lists.adv_is %}checked{% endif %}><span>Can be a commander</span></label>
+        {% if scope != "scryfall" %}        <label class="pill-check"><input type="checkbox" name="adv_is" value="signed" form="{{ form_id }}" {% if "signed" in adv.lists.adv_is %}checked{% endif %}><span>Are signed</span></label>{% endif %}
       </div>
     </fieldset>
   </div>
   <div class="row-actions">
-    <button type="submit" class="btn primary" form="card-search">Search</button>
-    <a class="btn ghost" href="{% url 'collection:cards' %}">Clear all</a>
-    <span class="small muted">Every field you fill in narrows the results.</span>
+    <button type="submit" class="btn primary" form="{{ form_id }}">Search</button>
+    <a class="btn ghost" href="{{ clear_url }}">Clear all</a>
+    <button type="button" class="link-btn" data-adv-close>Hide advanced search</button>
+    <span class="small muted">Every field you fill in narrows the results.{% if scope == "scryfall" %} Searches every Magic card on Scryfall.{% endif %}</span>
   </div>
 </details>
+<script>
+  (function () {
+    var box = document.getElementById("advanced-search-{{ form_id }}");
+    if (!box) return;
+    var key = box.dataset.remember;
+    try { if (localStorage.getItem(key) === "1") box.open = true; } catch (e) {}
+    box.addEventListener("toggle", function () { try { localStorage.setItem(key, box.open ? "1" : "0"); } catch (e) {} });
+    var close = box.querySelector("[data-adv-close]");
+    if (close) close.addEventListener("click", function () { box.open = false; box.querySelector("summary").focus(); });
+  })();
+</script>

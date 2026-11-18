@@ -299,7 +299,7 @@
         <label class="seg-opt"><input type="radio" name="src" value="all" {% if source == "all" %}checked{% endif %}> All cards (add to collection)</label>
       </div>
       <label class="sr" for="lib-q">Search {% if source == "all" %}all Magic cards{% else %}your library{% endif %}</label>
-      <input type="search" id="lib-q" name="q" value="{{ q }}" placeholder='Type a card name, or e.g. o:"draw a card" mv<=3' autocomplete="off">
+      <input type="search" id="lib-q" name="q" value="{{ q }}" placeholder="Card name, type or rules text" autocomplete="off">
       <button type="submit" class="btn primary">Search</button>
       {% if can_fit %}
         {# The hidden 0 comes first so a ticked box (sent after it) wins. #}
@@ -310,6 +310,7 @@
         </label>
       {% endif %}
     </form>
+    {% url 'collection:deck' deck.pk as clear_url %}{% include "collection/_advanced_search.html" with form_id="library-search" scope="library" clear_url=clear_url %}
     {% include "collection/_search_help.html" %}
     <div id="library-results" aria-live="polite">
       {% include "collection/_library_results.html" %}

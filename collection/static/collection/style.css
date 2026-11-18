@@ -1164,3 +1164,10 @@ body.selecting-decks .ad-cover { cursor: pointer; }
 .pill-check > span { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 13px; background: var(--panel); user-select: none; }
 .pill-check input:checked + span { background: color-mix(in srgb, var(--accent) 22%, var(--panel)); border-color: var(--accent); color: var(--text); font-weight: 600; }
 .pill-check input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.adv-search > summary { list-style: none; }
+.adv-search > summary::-webkit-details-marker { display: none; }
+.adv-caret { display: inline-block; transition: transform .15s; color: var(--muted); }
+.adv-search[open] .adv-caret { transform: rotate(90deg); }
+.adv-on { font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--text); }
+.adv-search[open] .adv-hint { display: none; }
+@media (prefers-reduced-motion: reduce) { .adv-caret { transition: none; } }

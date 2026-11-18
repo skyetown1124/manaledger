@@ -2797,3 +2797,32 @@ class AdvancedSearchTests(TestCase):
         self.assertContains(page, '<option value="le" selected>')
         self.assertIn("type contains \"Creature\"", page.context["search"].descriptions)
         self.assertFalse(self.client.get(reverse("collection:cards")).context["adv_active"])
+
+
+class AdvancedSearchEverywhereTests(TestCase):
+    def test_scryfall_query(self):
+        from django.http import QueryDict
+        qd = QueryDict("adv_type=Creature&adv_type=Legendary&adv_subtype=Elf&adv_color=G&adv_color=B"
+                       "&adv_colormode=atmost&adv_mv=3&adv_mvop=le&adv_rarity=rare&adv_rarity=mythic"
+                       "&adv_set=MH2&adv_artist=Seb%20McKinnon&adv_format=commander&adv_is=commander&adv_finish=foil")
+        self.assertEqual(search.to_scryfall(qd),
+                         't:creature t:legendary t:"Elf" c<=bg mv<=3 (r:rare or r:mythic) s:mh2 a:"Seb McKinnon" '
+                         'f:commander is:commander is:foil')
+        self.assertEqual(search.to_scryfall(QueryDict("adv_identity=C")), "id<=c")
+
+    def test_deck_library_and_add_page(self):
+        deck = Deck.objects.create(name="Adv", format="casual")
+        elf = make_card("Llanowar Elves", type_line="Creature — Elf", colors="G", rarity="common")
+        bolt = make_card("Lightning Bolt", type_line="Instant", colors="R", rarity="common")
+        CollectionItem.objects.create(card=elf)
+        CollectionItem.objects.create(card=bolt)
+        page = self.client.get(reverse("collection:deck", args=[deck.pk]) + "?adv_type=Instant")
+        self.assertEqual([r["card"].name for r in page.context["results"]], ["Lightning Bolt"])
+        self.assertEqual(page.context["adv_count"], 1)
+        with mock.patch.object(scryfall, "search", return_value=[]) as fake:
+            self.client.get(reverse("collection:deck", args=[deck.pk]) + "?src=all&adv_type=Instant&adv_color=R")
+            self.assertEqual(fake.call_args[0][0], "t:instant c>=r")
+            self.client.get(reverse("collection:add") + "?adv_type=Creature&adv_subtype=Elf")
+            self.assertEqual(fake.call_args[0][0], 't:creature t:"Elf"')
+            self.assertEqual(fake.call_args[1]["unique"], "cards")
+        self.assertContains(self.client.get(reverse("collection:add")), "Advanced search")

@@ -82,8 +82,11 @@
   function query() {
     const data = new FormData(form);
     // A ticked "fits" box is sent after its hidden 0; keep the last value only.
+    // Advanced search can send several values for one field (two card types), so keep them all.
     const params = new URLSearchParams();
-    for (const [k, v] of data.entries()) params.set(k, v);
+    for (const [k, v] of data.entries()) {
+      if (k.startsWith("adv_")) { if (v !== "") params.append(k, v); } else params.set(k, v);
+    }
     return params;
   }
 
@@ -113,6 +116,13 @@
   input.addEventListener("input", function () {
     clearTimeout(timer);
     timer = setTimeout(search, allCards() ? 600 : 250);
+  });
+  // Advanced search fields update the results as you pick them, too.
+  document.querySelectorAll('[form="library-search"][name^="adv_"]').forEach(function (el) {
+    el.addEventListener(el.type === "text" || el.type === "number" ? "input" : "change", function () {
+      clearTimeout(timer);
+      timer = setTimeout(search, allCards() ? 700 : 300);
+    });
   });
   form.querySelectorAll('input[name="src"]').forEach(function (radio) {
     radio.addEventListener("change", function () {

@@ -560,6 +560,10 @@ exactly, or only these), the Commander colors a card fits, mana value (exactly,
 or less, or more), rarity, set and artist (picked from cards you own), format
 legality, finish, and "can be a commander" / "are signed". Every field you fill in
 narrows the results, and the chips under the search show what's being matched.
+The same panel is on a deck's **Add cards** panel (your library or all cards, and
+the results update as you pick) and on the **Add Cards** page (searching all of
+Scryfall). It stays folded away until you open it, shows how many filters are on
+while closed, and remembers whether you left it open.
 Typed filters still work for anyone who likes them (see below).
 
 ## Searching your cards

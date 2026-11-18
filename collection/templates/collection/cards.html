@@ -31,7 +31,7 @@
     <a class="btn small ghost" href="{% url 'collection:cards_export' %}" title="Download your whole collection as a spreadsheet (CSV)">Export CSV</a>
   </form>
 
-  {% include "collection/_advanced_search.html" %}
+  {% url 'collection:cards' as clear_url %}{% include "collection/_advanced_search.html" with form_id="card-search" scope="collection" clear_url=clear_url %}
   {% include "collection/_search_help.html" %}
 
   {% if search.descriptions %}
@@ -46,7 +46,7 @@
   {% endif %}
 
   {% if rows %}
-    <p class="note">Change a quantity, what you paid, the condition, language, where the copies are kept or whether they're signed, then press Save. Search <code>a:"Rebecca Guay"</code> for an artist's cards, or <code>is:signed</code> for your signed cards. Set a quantity to 0 to remove the card.</p>
+    <p class="note">Change a quantity, what you paid, the condition, language, where the copies are kept or whether they're signed, then press Save. Click an artist's name to see all their cards, or use Advanced search for signed cards, sets, rarities and more. Set a quantity to 0 to remove the card.</p>
     <datalist id="location-list">{% for l in locations %}<option value="{{ l }}">{% endfor %}</datalist>
     <div class="table-wrap">
       <table class="data cards-table">
