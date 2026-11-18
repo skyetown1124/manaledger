@@ -128,7 +128,15 @@ def cards(request):
     for card_id, deck_name in DeckCard.objects.values_list("card_id", "deck__name"):
         decks_of.setdefault(card_id, set()).add(deck_name)
     found = search.parse(q)
-    if q:
+    adv = search.advanced(request.GET) if search.has_advanced(request.GET) else None
+    if adv:  # the Advanced search form: its filters add to whatever was typed
+        found.q &= adv.q
+        found.descriptions += adv.descriptions
+        found.errors += adv.errors
+        found.highlight += adv.highlight
+        if adv.item_filters:
+            items = items.filter(**adv.item_filters)
+    if q or adv:
         items = items.filter(card__in=Card.objects.filter(found.q))
     locations = sorted({loc for loc in CollectionItem.objects.values_list("location", flat=True) if loc}, key=str.casefold)
     loc = request.GET.get("loc", "")
@@ -154,6 +162,7 @@ def cards(request):
     return render(request, "collection/cards.html", {
         "active_tab": "cards", "rows": rows, "q": q, "sort": sort, "total": total,
         "locations": locations, "loc": loc, "conditions": CollectionItem.CONDITION_CHOICES,
+        "adv": _advanced_form(request.GET), "adv_active": bool(adv),
         "languages": CollectionItem.LANGUAGE_CHOICES,
         "copies": sum(r["item"].quantity for r in rows),
         "search": found, "show_text": bool(found.highlight),
@@ -184,6 +193,22 @@ def item_update(request, pk):
         messages.success(request, f"Updated {item.card.name}.")
     services.record_collection_value()
     return _back(request, "collection:cards")
+
+
+def _advanced_form(params):
+    """What the Advanced search form needs: its choices (from your own collection) and current values."""
+    owned = Card.objects.filter(items__isnull=False)
+    sets = sorted({(s.lower(), n) for s, n in owned.values_list("set_code", "set_name")}, key=lambda x: x[1].casefold())
+    artists = sorted({a for a in owned.values_list("artist", flat=True) if a}, key=str.casefold)
+    return {
+        "types": search.CARD_TYPES, "sets": sets, "artists": artists,
+        "formats": ["commander", "standard", "pioneer", "modern", "legacy", "vintage", "pauper", "brawl", "oathbreaker"],
+        "colors": [("W", "White"), ("U", "Blue"), ("B", "Black"), ("R", "Red"), ("G", "Green")],
+        "rarities": ["common", "uncommon", "rare", "mythic"],
+        "mvops": [("eq", "exactly"), ("le", "or less"), ("ge", "or more")],
+        "v": {k: params.get(k, "") for k in search.ADV_FIELDS},
+        "lists": {k: params.getlist(k) for k in ("adv_type", "adv_color", "adv_identity", "adv_rarity", "adv_is")},
+    }
 
 
 CSV_CONDITIONS = dict(CollectionItem.CONDITION_CHOICES)

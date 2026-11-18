@@ -4,10 +4,10 @@
 
 {% block content %}
 <section class="panel">
-  <form class="section-head filters" method="get" role="search">
+  <form class="section-head filters" method="get" role="search" id="card-search">
     <label for="card-filter">Search</label>
     <input type="search" id="card-filter" name="q" value="{{ q }}" class="wide"
-           placeholder='e.g.  t:creature o:"draw a card" c:u mv<=3' aria-describedby="search-help">
+           placeholder="Card name, type or rules text" aria-describedby="search-help">
     <label for="card-sort">Sort by</label>
     <select id="card-sort" name="sort" onchange="this.form.submit()">
       <option value="value" {% if sort == "value" %}selected{% endif %}>Value</option>
@@ -25,12 +25,13 @@
       </select>
     {% endif %}
     <button type="submit" class="btn primary">Search</button>
-    {% if q or loc %}<a class="btn ghost" href="{% url 'collection:cards' %}">Clear</a>{% endif %}
+    {% if q or loc or adv_active %}<a class="btn ghost" href="{% url 'collection:cards' %}">Clear</a>{% endif %}
     <span class="spacer"></span>
     <span class="summary">{{ copies }} cards · <strong>{{ total|money }}</strong></span>
     <a class="btn small ghost" href="{% url 'collection:cards_export' %}" title="Download your whole collection as a spreadsheet (CSV)">Export CSV</a>
   </form>
 
+  {% include "collection/_advanced_search.html" %}
   {% include "collection/_search_help.html" %}
 
   {% if search.descriptions %}

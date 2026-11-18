@@ -2748,3 +2748,52 @@ class ArtistAndSignedTests(TestCase):
         self.client.post(url, {"quantity": "1"})                       # older form without the box: unchanged
         csv_text = self.client.get(reverse("collection:cards_export")).content.decode("utf-8-sig")
         self.assertIn("Rebecca Guay", csv_text)
+
+
+class AdvancedSearchTests(TestCase):
+    def setUp(self):
+        self.elf = make_card("Llanowar Elves", type_line="Creature — Elf Druid", colors="G", color_identity="G",
+                             cmc=1, rarity="common", oracle_text="{T}: Add {G}.", artist="Anson Maddocks",
+                             set_code="m19", legalities={"commander": "legal", "modern": "legal"})
+        self.bolt = make_card("Lightning Bolt", type_line="Instant", colors="R", color_identity="R", cmc=1,
+                              rarity="uncommon", oracle_text="Lightning Bolt deals 3 damage to any target.",
+                              artist="Christopher Rush", set_code="lea", legalities={"commander": "legal"})
+        self.boss = make_card("Atraxa, Grand Unifier", type_line="Legendary Creature — Phyrexian Angel",
+                              colors="WUBG", color_identity="WUBG", cmc=7, rarity="mythic", set_code="one",
+                              legalities={"commander": "legal"})
+        CollectionItem.objects.create(card=self.elf, quantity=3)
+        CollectionItem.objects.create(card=self.bolt, finish="foil", signed=True)
+        CollectionItem.objects.create(card=self.boss)
+
+    def names(self, query):
+        page = self.client.get(reverse("collection:cards") + "?" + query)
+        return sorted(r["card"].name for r in page.context["rows"])
+
+    def test_each_field(self):
+        self.assertEqual(self.names("adv_type=Creature"), ["Atraxa, Grand Unifier", "Llanowar Elves"])
+        self.assertEqual(self.names("adv_type=Creature&adv_type=Legendary"), ["Atraxa, Grand Unifier"])
+        self.assertEqual(self.names("adv_subtype=elf"), ["Llanowar Elves"])
+        self.assertEqual(self.names("adv_color=R"), ["Lightning Bolt"])
+        self.assertEqual(self.names("adv_color=M"), ["Atraxa, Grand Unifier"])
+        self.assertEqual(self.names("adv_color=G&adv_colormode=exact"), ["Llanowar Elves"])
+        self.assertEqual(self.names("adv_identity=G&adv_identity=R"), ["Lightning Bolt", "Llanowar Elves"])
+        self.assertEqual(self.names("adv_mv=2&adv_mvop=le"), ["Lightning Bolt", "Llanowar Elves"])
+        self.assertEqual(self.names("adv_mv=7&adv_mvop=ge"), ["Atraxa, Grand Unifier"])
+        self.assertEqual(self.names("adv_rarity=common&adv_rarity=mythic"), ["Atraxa, Grand Unifier", "Llanowar Elves"])
+        self.assertEqual(self.names("adv_set=lea"), ["Lightning Bolt"])
+        self.assertEqual(self.names("adv_artist=rush"), ["Lightning Bolt"])
+        self.assertEqual(self.names("adv_format=modern"), ["Llanowar Elves"])
+        self.assertEqual(self.names("adv_is=signed"), ["Lightning Bolt"])
+        self.assertEqual(self.names("adv_is=commander"), ["Atraxa, Grand Unifier"])
+        self.assertEqual(self.names("adv_finish=foil"), ["Lightning Bolt"])
+        self.assertEqual(self.names("adv_text=damage"), ["Lightning Bolt"])
+        self.assertEqual(self.names("adv_name=elves"), ["Llanowar Elves"])
+
+    def test_combined_with_typed_search_and_form_keeps_values(self):
+        self.assertEqual(self.names("q=bolt&adv_color=R"), ["Lightning Bolt"])
+        page = self.client.get(reverse("collection:cards") + "?adv_type=Creature&adv_color=G&adv_mv=1&adv_mvop=le")
+        self.assertTrue(page.context["adv_active"])
+        self.assertContains(page, 'name="adv_type" value="Creature" form="card-search" checked')
+        self.assertContains(page, '<option value="le" selected>')
+        self.assertIn("type contains \"Creature\"", page.context["search"].descriptions)
+        self.assertFalse(self.client.get(reverse("collection:cards")).context["adv_active"])

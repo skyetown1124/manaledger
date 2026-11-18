@@ -551,6 +551,17 @@ columns follow Moxfield's collection CSV (Count, Name, Edition, Condition,
 Language, Foil, Collector Number, Purchase Price…); the last ones add the
 location, current price, value and Scryfall id.
 
+## Advanced search
+
+On **My Cards**, open **Advanced search** under the search box to search with
+plain fields instead of typed filters: card name, rules text, card type (tick
+Creature, Instant, Legendary... plus a subtype like Elf), colors (including,
+exactly, or only these), the Commander colors a card fits, mana value (exactly,
+or less, or more), rarity, set and artist (picked from cards you own), format
+legality, finish, and "can be a commander" / "are signed". Every field you fill in
+narrows the results, and the chips under the search show what's being matched.
+Typed filters still work for anyone who likes them (see below).
+
 ## Searching your cards
 
 Plain words match a card's name, type line or rules text. Add filters with

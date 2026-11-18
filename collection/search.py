@@ -231,3 +231,90 @@ def parse(query):
         result.q &= q
         result.descriptions.append(text)
     return result
+
+
+# ------------------------------------------------------------------ Advanced search (form fields)
+
+CARD_TYPES = ["Creature", "Instant", "Sorcery", "Artifact", "Enchantment", "Planeswalker", "Land",
+              "Battle", "Legendary", "Basic"]
+MV_OPS = {"eq": "=", "le": "<=", "ge": ">=", "lt": "<", "gt": ">"}
+ADV_FIELDS = ("adv_name", "adv_text", "adv_type", "adv_subtype", "adv_color", "adv_colormode", "adv_identity",
+              "adv_mv", "adv_mvop", "adv_rarity", "adv_set", "adv_artist", "adv_format", "adv_is", "adv_finish")
+
+
+def advanced(params):
+    """Build a search from the Advanced search form. `params` is request.GET (a QueryDict).
+    Returns a SearchResult like parse() does, so it can be combined with a typed search.
+    Filters that need the copies you own (finish) are in result.item_filters."""
+    result = SearchResult()
+    result.item_filters = {}
+
+    def add(q, text, highlight=None):
+        result.q &= q
+        result.descriptions.append(text)
+        if highlight:
+            result.highlight.append(highlight)
+
+    def run(key, op, value):
+        try:
+            return _filter(key, op, value)
+        except ValueError as exc:
+            result.errors.append(str(exc))
+            return None
+
+    get = lambda k: (params.get(k) or "").strip()
+    if get("adv_name"):
+        add(*run("name", ":", get("adv_name")))
+    if get("adv_text"):
+        hit = run("oracle", ":", get("adv_text"))
+        if hit:
+            add(*hit, highlight=get("adv_text"))
+    types = [t for t in params.getlist("adv_type") if t in CARD_TYPES]
+    for t in types:
+        add(*run("type", ":", t))
+    if get("adv_subtype"):
+        add(*run("type", ":", get("adv_subtype")))
+
+    colors = "".join(c for c in COLORS if c in params.getlist("adv_color"))
+    special = [c for c in params.getlist("adv_color") if c in ("C", "M")]
+    mode = {"exact": "=", "atmost": "<="}.get(get("adv_colormode"), ":")
+    if colors:
+        add(*run("color", mode, colors.lower()))
+    if "C" in special:
+        add(*run("color", ":", "c"))
+    if "M" in special:
+        add(*run("color", ":", "m"))
+    identity = "".join(c for c in COLORS if c in params.getlist("adv_identity"))
+    if identity or "C" in params.getlist("adv_identity"):
+        add(*run("identity", ":", identity.lower() or "c"))
+
+    if get("adv_mv") != "":
+        hit = run("mv", MV_OPS.get(get("adv_mvop"), "="), get("adv_mv"))
+        if hit:
+            add(*hit)
+    rarities = [r for r in params.getlist("adv_rarity") if r in ("common", "uncommon", "rare", "mythic", "special")]
+    if rarities:
+        add(Q(rarity__in=rarities), "rarity is " + " or ".join(rarities))
+    if get("adv_set"):
+        add(*run("set", ":", get("adv_set")))
+    if get("adv_artist"):
+        add(*run("artist", ":", get("adv_artist")))
+    if get("adv_format"):
+        hit = run("format", ":", get("adv_format"))
+        if hit:
+            add(*hit)
+    flags = params.getlist("adv_is")
+    if "commander" in flags:
+        add(*run("is", ":", "commander"))
+    if "signed" in flags:
+        add(*run("is", ":", "signed"))
+    finish = get("adv_finish")
+    if finish in ("nonfoil", "foil", "etched"):
+        result.item_filters["finish"] = finish
+        result.descriptions.append({"nonfoil": "non-foil copies", "foil": "foil copies", "etched": "etched foil copies"}[finish])
+    return result
+
+
+def has_advanced(params):
+    return any(params.getlist(k) and any(v.strip() for v in params.getlist(k)) for k in ADV_FIELDS
+               if k not in ("adv_colormode", "adv_mvop"))

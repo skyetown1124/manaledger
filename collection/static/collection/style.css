@@ -1148,3 +1148,19 @@ body.selecting-decks .ad-cover { cursor: pointer; }
 .artist-line { margin-top: 2px; }
 .artist-line a { color: inherit; }
 .signed-badge { font-size: 11px; padding: 0 6px; border-radius: 9px; background: color-mix(in srgb, var(--gold, #d4a72c) 22%, transparent); color: var(--text); white-space: nowrap; }
+
+/* ---- Advanced search (My Cards) ---- */
+.adv-search { margin: 4px 0 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); padding: 8px 12px; }
+.adv-search > summary { cursor: pointer; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.adv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px 18px; margin: 12px 0 10px; }
+.adv-field { display: grid; gap: 6px; align-content: start; border: 0; padding: 0; margin: 0; min-width: 0; }
+.adv-field > span, .adv-field > legend { font-size: 12px; font-weight: 600; color: var(--muted); padding: 0; }
+.adv-field input[type="text"], .adv-field select { width: 100%; }
+.adv-wide { grid-column: 1 / -1; }
+.adv-checks { display: flex; flex-wrap: wrap; gap: 6px; }
+.adv-inline { display: flex; gap: 6px; align-items: center; }
+.pill-check { position: relative; }
+.pill-check input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.pill-check > span { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 13px; background: var(--panel); user-select: none; }
+.pill-check input:checked + span { background: color-mix(in srgb, var(--accent) 22%, var(--panel)); border-color: var(--accent); color: var(--text); font-weight: 600; }
+.pill-check input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
