@@ -2722,3 +2722,29 @@ class UpgradeLandTests(TestCase):
         self.assertFalse(upgrade.land_fits("Tundra", mk("Tundra", "({T}: Add {W} or {U}.)", "Land — Plains Island"), ident))
         self.assertTrue(upgrade.land_fits("Ancient Tomb", mk("Ancient Tomb", "{T}: Add {C}{C}."), ident))
         self.assertIsNone(upgrade._kind("Glacial Chasm", {"name": "Glacial Chasm", "type_line": "Land", "game_changer": True}))
+
+
+class ArtistAndSignedTests(TestCase):
+    def test_artist_from_scryfall_and_signed_copies(self):
+        self.assertEqual(scryfall.parse_card({"id": "x", "name": "A", "artist": "Rebecca Guay"})["artist"], "Rebecca Guay")
+        both = {"id": "y", "name": "B // C", "card_faces": [{"artist": "Ann"}, {"artist": "Bo"}, {"artist": "Ann"}]}
+        self.assertEqual(scryfall.parse_card(both)["artist"], "Ann & Bo")
+        guay = make_card("Regrowth", artist="Rebecca Guay")
+        other = make_card("Sol Ring", artist="Mark Tedin")
+        item = CollectionItem.objects.create(card=guay)
+        CollectionItem.objects.create(card=other)
+        url = reverse("collection:item_update", args=[item.pk])
+        self.client.post(url, {"quantity": "1", "signed_shown": "1", "signed": "1"})
+        item.refresh_from_db()
+        self.assertTrue(item.signed)
+        page = self.client.get(reverse("collection:cards") + "?q=is%3Asigned")
+        self.assertEqual([r["card"].name for r in page.context["rows"]], ["Regrowth"])
+        self.assertContains(page, "Signed")
+        page = self.client.get(reverse("collection:cards") + '?q=a%3A%22guay%22')
+        self.assertEqual([r["card"].name for r in page.context["rows"]], ["Regrowth"])
+        self.client.post(url, {"quantity": "1", "signed_shown": "1"})  # box unticked
+        item.refresh_from_db()
+        self.assertFalse(item.signed)
+        self.client.post(url, {"quantity": "1"})                       # older form without the box: unchanged
+        csv_text = self.client.get(reverse("collection:cards_export")).content.decode("utf-8-sig")
+        self.assertIn("Rebecca Guay", csv_text)

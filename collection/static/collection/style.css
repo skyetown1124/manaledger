@@ -1143,3 +1143,8 @@ body.selecting-decks .ad-cover { cursor: pointer; }
 .up-summary { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin: 4px 0 10px; }
 .upgrade-table td:first-child { width: 28px; }
 .upgrade-table input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--accent); }
+
+/* ---- Artist and signed (My Cards) ---- */
+.artist-line { margin-top: 2px; }
+.artist-line a { color: inherit; }
+.signed-badge { font-size: 11px; padding: 0 6px; border-radius: 9px; background: color-mix(in srgb, var(--gold, #d4a72c) 22%, transparent); color: var(--text); white-space: nowrap; }

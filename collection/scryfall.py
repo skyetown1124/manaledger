@@ -198,6 +198,7 @@ def parse_card(raw):
         "usd_foil": _price(prices.get("usd_foil")),
         "usd_etched": _price(prices.get("usd_etched")),
         "finishes": raw.get("finishes", ["nonfoil"]),
+        "artist": raw.get("artist") or " & ".join(dict.fromkeys(f["artist"] for f in faces if f.get("artist"))),
         "tokens": [
             {"id": part["id"], "name": part.get("name", ""), "type_line": part.get("type_line", "")}
             for part in raw.get("all_parts") or []

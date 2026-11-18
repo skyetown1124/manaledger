@@ -540,6 +540,12 @@ places are suggested as you type). Change them and press Save. **Stored in** at
 the top filters the list to one place, or to cards with no place set. These
 apply to all copies of that printing and finish.
 
+**Artist and signed copies.** Each card shows its artist (from Scryfall; cards
+added before this was in the app get it the next time you refresh prices). Click
+an artist's name, or search `a:"Rebecca Guay"`, to see all their cards you own.
+Tick **Signed** on copies that are signed; search `is:signed` to list them. Both
+are in the CSV export.
+
 **Export CSV** downloads the whole collection as a spreadsheet. The first
 columns follow Moxfield's collection CSV (Count, Name, Edition, Condition,
 Language, Foil, Collector Number, Purchase Price…); the last ones add the

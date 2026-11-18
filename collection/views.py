@@ -178,6 +178,8 @@ def item_update(request, pk):
             item.language = request.POST["language"]
         if "location" in request.POST:
             item.location = " ".join(request.POST.get("location", "").split())[:100]
+        if "signed_shown" in request.POST:  # an unticked checkbox sends nothing, so the form marks it was there
+            item.signed = request.POST.get("signed") == "1"
         item.save()
         messages.success(request, f"Updated {item.card.name}.")
     services.record_collection_value()
@@ -198,7 +200,7 @@ def cards_export(request):
     out = csv.writer(response)
     out.writerow(["Count", "Tradelist Count", "Name", "Edition", "Condition", "Language", "Foil", "Tags",
                   "Last Modified", "Collector Number", "Alter", "Proxy", "Purchase Price",
-                  "Location", "Price Each (USD)", "Value (USD)", "Scryfall ID"])
+                  "Location", "Price Each (USD)", "Value (USD)", "Scryfall ID", "Artist", "Signed"])
     for item in CollectionItem.objects.select_related("card").order_by("card__name", "card__set_code"):
         c, price = item.card, item.unit_price
         out.writerow([
@@ -207,6 +209,7 @@ def cards_export(request):
             timezone.localtime(item.added_at).strftime("%Y-%m-%d %H:%M:%S"), c.collector_number, "False", "False",
             item.purchase_price if item.purchase_price is not None else "", item.location,
             price if price is not None else "", item.total_value if price is not None else "", c.scryfall_id,
+            c.artist, "Yes" if item.signed else "",
         ])
     return response
 

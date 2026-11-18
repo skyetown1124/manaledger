@@ -13,6 +13,7 @@
     {% endif %}
     <dl class="card-facts">
       <div><dt>Printing</dt><dd>{{ card.set_name }} · {{ card.set_code|upper }} #{{ card.collector_number }}</dd></div>
+      {% if card.artist %}<div><dt>Artist</dt><dd><a href="{% url 'collection:cards' %}?q=a%3A%22{{ card.artist|urlencode }}%22">{{ card.artist }}</a></dd></div>{% endif %}
       <div><dt>Price</dt><dd>{{ card.usd|money }}{% if card.usd_foil %} · foil {{ card.usd_foil|money }}{% endif %}</dd></div>
       <div><dt>You own</dt><dd>{{ owned }} cop{{ owned|pluralize:"y,ies" }}</dd></div>
       <div><dt>Want list</dt><dd>{% if wanted %}<a href="{% url 'collection:wants' %}">{{ wanted }} wanted</a>{% endif %}

@@ -55,6 +55,7 @@ ALIASES = {
     "r": "rarity", "rarity": "rarity",
     "s": "set", "set": "set", "e": "set", "edition": "set",
     "f": "format", "format": "format", "legal": "format",
+    "a": "artist", "artist": "artist",
     "is": "is",
 }
 
@@ -122,6 +123,8 @@ def _filter(key, op, value):
         return Q(keywords__icontains=value), f'has keyword "{value}"'
     if key == "set":
         return Q(set_code__iexact=value), f"set is {value.upper()}"
+    if key == "artist":
+        return Q(artist__icontains=value), f'illustrated by "{value}"'
 
     if key == "rarity":
         rarity = RARITIES.get(value.lower())
@@ -183,7 +186,9 @@ def _filter(key, op, value):
             q = (Q(type_line__icontains="legendary") & Q(type_line__icontains="creature")) | \
                 Q(oracle_text__icontains="can be your commander")
             return q, "can be your commander"
-        raise ValueError(f'"is:{value}" isn\'t supported. Try is:commander.')
+        if value.lower() == "signed":
+            return Q(items__signed=True), "signed copies you own"
+        raise ValueError(f'"is:{value}" isn\'t supported. Try is:commander or is:signed.')
 
     raise ValueError(f"Unknown filter {key}.")
 

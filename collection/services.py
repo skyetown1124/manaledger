@@ -13,7 +13,7 @@ CARD_FIELDS = [
     "type_line", "released_at", "image_url", "scryfall_uri",
     "usd", "usd_foil", "usd_etched",
     "mana_cost", "cmc", "oracle_text", "keywords", "power", "toughness",
-    "loyalty", "color_identity", "legalities", "game_changer", "tokens",
+    "loyalty", "color_identity", "legalities", "game_changer", "tokens", "artist",
 ]
 
 

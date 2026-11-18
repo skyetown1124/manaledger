@@ -38,6 +38,7 @@ class Card(models.Model):
     usd_foil = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     usd_etched = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     prices_updated = models.DateTimeField(null=True, blank=True)
+    artist = models.CharField(max_length=200, blank=True, help_text="Who illustrated this printing (from Scryfall).")
     tokens = models.JSONField(null=True, blank=True,
                               help_text="Tokens and emblems the card makes [{id, name, type_line}] from Scryfall; null until looked up.")
 
@@ -89,6 +90,7 @@ class CollectionItem(models.Model):
     condition = models.CharField(max_length=3, choices=CONDITION_CHOICES, default="NM")
     language = models.CharField(max_length=3, choices=LANGUAGE_CHOICES, default="en")
     location = models.CharField(max_length=100, blank=True, help_text="Where these copies are kept, e.g. 'Binder 2' or 'Atraxa deck box'.")
+    signed = models.BooleanField(default=False, help_text="These copies are signed (usually by the artist).")
     purchase_price = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True,
         help_text="What you paid per copy (optional).",

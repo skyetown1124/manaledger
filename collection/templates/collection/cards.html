@@ -45,13 +45,13 @@
   {% endif %}
 
   {% if rows %}
-    <p class="note">Change a quantity, what you paid, the condition, language or where the copies are kept, then press Save. Set a quantity to 0 to remove the card.</p>
+    <p class="note">Change a quantity, what you paid, the condition, language, where the copies are kept or whether they're signed, then press Save. Search <code>a:"Rebecca Guay"</code> for an artist's cards, or <code>is:signed</code> for your signed cards. Set a quantity to 0 to remove the card.</p>
     <datalist id="location-list">{% for l in locations %}<option value="{{ l }}">{% endfor %}</datalist>
     <div class="table-wrap">
       <table class="data cards-table">
         <thead>
           <tr>
-            <th>Card</th><th>Rarity</th><th>Finish</th><th>Condition · language · location</th>
+            <th>Card</th><th>Rarity</th><th>Finish</th><th>Condition · language · location · signed</th>
             <th class="num">Qty</th><th class="num">Paid each</th>
             <th class="num">Price</th><th class="num">Value</th><th class="num">Gain</th><th></th>
           </tr>
@@ -65,6 +65,7 @@
                   {{ r.card.mana_cost|mana }}
                 </div>
                 <div class="muted small">{% if r.card.type_line %}{{ r.card.type_line }} · {% endif %}{{ r.card.set_code|upper }} #{{ r.card.collector_number }}</div>
+                {% if r.card.artist or r.item.signed %}<div class="small artist-line">{% if r.card.artist %}<span class="muted">Art:</span> <a href="?q=a%3A%22{{ r.card.artist|urlencode }}%22">{{ r.card.artist }}</a>{% endif %}{% if r.item.signed %} <span class="signed-badge" title="Signed">✍ Signed</span>{% endif %}</div>{% endif %}
                 {% if r.card.oracle_text or r.decks %}
                   <details class="card-text"{% if show_text %} open{% endif %}>
                     <summary>Card text{% if r.decks %} · in {{ r.decks|length }} deck{{ r.decks|length|pluralize }}{% endif %}</summary>
@@ -86,6 +87,8 @@
                     {% for v, l in languages %}<option value="{{ v }}" {% if v == r.item.language %}selected{% endif %}>{{ l }}</option>{% endfor %}
                   </select>
                   <input type="text" name="location" value="{{ r.item.location }}" form="update-{{ r.item.pk }}" list="location-list" maxlength="100" placeholder="Where it's kept" aria-label="Where {{ r.card.name }} is kept">
+                  <input type="hidden" name="signed_shown" value="1" form="update-{{ r.item.pk }}">
+                  <label class="check small"><input type="checkbox" name="signed" value="1" form="update-{{ r.item.pk }}" {% if r.item.signed %}checked{% endif %}> Signed</label>
                 </div>
               </td>
               <td class="num"><input class="qty" type="number" min="0" name="quantity" id="qty-{{ r.item.pk }}" value="{{ r.item.quantity }}" form="update-{{ r.item.pk }}" aria-label="Quantity of {{ r.card.name }}"></td>
