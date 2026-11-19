@@ -20,8 +20,9 @@
     <summary>What can I paste?</summary>
     <p class="note">The text export from Moxfield, Archidekt, MTG Arena, MTGO, EDHREC or TappedOut. One card per line, like <code>1 Sol Ring (CMM) 410</code>, <code>4x Lightning Bolt</code> or just <code>Counterspell</code>.</p>
     <ul class="note">
-      <li>Section headers decide where cards go: <code>Commander</code>, <code>Deck</code> or <code>Main</code>, <code>Sideboard</code>, <code>Companion</code> (goes in the sideboard). <code>Maybeboard</code> and <code>Considering</code> sections are skipped.</li>
-      <li>Tags work too: <code>*CMDR*</code> (Moxfield), <code>[Commander]</code> or <code>[Sideboard]</code> (Archidekt), and <code>SB:</code> at the start of a line.</li>
+      <li>Section headers decide where cards go: <code>Commander</code>, <code>Deck</code> or <code>Main</code>, <code>Sideboard</code>, <code>Companion</code> (goes in the sideboard). <code>Maybeboard</code> or <code>Considering</code> (goes in the Maybeboard).</li>
+      <li>Tags work too: <code>*CMDR*</code> (Moxfield), <code>[Commander]</code>, <code>[Sideboard]</code> or <code>[Maybeboard]</code> (Archidekt), and <code>SB:</code> at the start of a line. Other Archidekt categories like <code>[Ramp]</code> and Moxfield <code>#tags</code> become the card's tags.</li>
+      <li>From Archidekt: open the deck, choose <strong>Export</strong>, keep categories on, copy the text and paste it here. To update a deck later, paste the new list and choose to replace the current one.</li>
       <li>With no headers, everything goes in the main deck. You can move a card to another section on the deck page afterwards.</li>
     </ul>
   </details>
@@ -53,7 +54,7 @@
           {% for m in result.matches %}
             <tr>
               <td class="muted">{{ m.line.number }}</td>
-              <td><span class="board-tag board-{{ m.line.board }}">{% if m.line.board == "commander" %}Commander{% elif m.line.board == "side" %}Sideboard{% else %}Main{% endif %}</span></td>
+              <td><span class="board-tag board-{{ m.line.board }}">{% if m.line.board == "commander" %}Commander{% elif m.line.board == "side" %}Sideboard{% elif m.line.board == "maybe" %}Maybeboard{% else %}Main{% endif %}</span></td>
               <td class="card-cell">
                 <div class="card-name">{{ m.card.name }} {{ m.card.mana_cost|mana }}</div>
                 <div class="muted small">{{ m.card.type_line }}</div>

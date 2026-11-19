@@ -3,7 +3,7 @@
 A version is saved:
   - automatically before a change, when the newest version is over 30 minutes old
     (so each editing session has a "before" to compare with),
-  - before a list import or an Archidekt update replaces the deck,
+  - before a pasted list replaces the deck,
   - when you press "Save version",
   - the first time a deck page is opened, if the deck has no versions yet.
 """

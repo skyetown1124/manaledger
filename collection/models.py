@@ -163,7 +163,7 @@ class Deck(models.Model):
                                  help_text="This deck's tags, in the order the deck list groups them.")
     cover_card = models.ForeignKey("Card", on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
                                    help_text="The card whose art is the deck's cover (default: the commander).")
-    source = models.CharField(max_length=20, blank=True, help_text="Where the list came from: 'archidekt', 'precon' or blank")
+    source = models.CharField(max_length=20, blank=True, help_text="Where the list came from: 'precon', or blank. (Older decks may say 'archidekt'.)")
     source_id = models.CharField(max_length=200, blank=True, help_text="The deck's id there")
     source_url = models.URLField(max_length=500, blank=True)
     synced_at = models.DateTimeField(null=True, blank=True, help_text="When the list was last copied from its source")
@@ -297,19 +297,6 @@ class Precon(models.Model):
         return f"{self.name} ({self.code})"
 
 
-class LinkedProfile(models.Model):
-    """A deckbuilding-site account whose public decks you can import (one per site)."""
-
-    SITE_CHOICES = [("archidekt", "Archidekt")]
-
-    site = models.CharField(max_length=20, choices=SITE_CHOICES, unique=True)
-    username = models.CharField(max_length=100)
-    linked_at = models.DateTimeField(auto_now=True)
-
-    def __str__(self):
-        return f"{self.get_site_display()}: {self.username}"
-
-
 class WantItem(models.Model):
     """A card you want to buy: how many, in what finish, and the most you'd pay."""
 
@@ -400,7 +387,7 @@ class EdhrecPage(models.Model):
 
 
 class TagSet(models.Model):
-    """A saved list of deck tags (like Archidekt's category templates) to reuse on new decks."""
+    """A saved list of deck tags (like category templates on other deck sites) to reuse on new decks."""
 
     name = models.CharField(max_length=60, unique=True)
     tags = models.JSONField(default=list)

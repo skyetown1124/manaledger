@@ -683,9 +683,6 @@ kbd { font: 11px ui-monospace, Menlo, Consolas, monospace; border: 1px solid var
 .kpi-value-text { font-size: 18px; line-height: 1.3; word-break: break-word; }
 .foot-link { color: inherit; margin-left: 12px; }
 
-/* ---- Archidekt source strip ---- */
-.source-strip { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 20px; border-left: 3px solid var(--accent); }
-
 /* ---- Playtest: game menu and interaction simulator ---- */
 .pt-game-menu { position: relative; }
 .pt-game-menu-list { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; min-width: 240px; display: flex; flex-direction: column;
@@ -781,7 +778,7 @@ td.actions form + details, td.actions details + form { margin-top: 4px; }
 }
 .proxy-control { margin-top: 3px; }
 
-/* ---- Decks grid (Archidekt-style tiles) ---- */
+/* ---- Decks grid (tiles) ---- */
 .ad-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 22px; }
 .ad-tile { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; display: flex; flex-direction: column; overflow: visible; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
 .ad-tile:hover { border-color: var(--accent); }

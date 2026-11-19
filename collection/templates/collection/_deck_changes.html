@@ -34,7 +34,7 @@
         <input type="text" id="version-label" name="label" placeholder="Name (optional), e.g. Before upgrades" maxlength="100">
         <button type="submit" class="btn small primary">Save version</button>
       </form>
-      <p class="small muted">The app also saves a version before you edit, once per editing session (30 minutes), and before an import or Archidekt update replaces the list.</p>
+      <p class="small muted">The app also saves a version before you edit, once per editing session (30 minutes), and before a pasted list replaces the deck.</p>
       <ol class="versions-list">
         {% for v in deck_versions %}
           <li>

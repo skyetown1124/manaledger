@@ -12,12 +12,12 @@ from django.core.management.color import no_style
 from django.db import connection, transaction
 from django.utils import timezone
 
-from .models import (Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, DeckVersion, DeletedDeck, LinkedProfile,
+from .models import (Card, CollectionItem, CollectionSnapshot, Deck, DeckCard, DeckVersion, DeletedDeck,
                      PriceSnapshot, TagSet, WantItem)
 
 # Order matters on restore: cards before anything that points at them.
 MODELS = [Card, CollectionItem, PriceSnapshot, CollectionSnapshot, Deck, DeckCard, DeckVersion, DeletedDeck,
-          LinkedProfile, WantItem, TagSet]
+          WantItem, TagSet]
 LABELS = {m._meta.label_lower: m for m in MODELS}
 
 
@@ -66,7 +66,6 @@ def restore(raw):
         with transaction.atomic():
             Deck.objects.all().delete()          # deck cards go with them
             CollectionSnapshot.objects.all().delete()
-            LinkedProfile.objects.all().delete()
             # Older backups have no tag sets or deleted decks: keep the ones here.
             if any(o["model"] == "collection.tagset" for o in data):
                 TagSet.objects.all().delete()

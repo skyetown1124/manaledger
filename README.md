@@ -160,7 +160,7 @@ Open http://127.0.0.1:8000/ and use **Add Cards** to search for your first card.
   a reload doesn't lose it, and the screen stays on while you play.
 - **Side menu**: every page has a menu down the left: Collection (Dashboard,
   My Cards, Add Cards, Import, Want List), Decks (All decks, Precons, Commander
-  ideas, Archidekt) and Play (Life Tracker, Rules), with Refresh prices,
+  ideas) and Play (Life Tracker, Rules), with Refresh prices,
   light/dark mode and Backup at the bottom. On a deck's pages it also lists
   that deck's Deck list, Suggestions, Playtest, Import list, Print proxies and
   Life tracker. The arrow at the top shrinks it to icons (remembered); on a
@@ -270,7 +270,7 @@ It uses the Scryfall prices the app already saves each time you refresh, so it n
 
 ## Deck views
 
-The **Decks** tab shows each deck as a tile like Archidekt's: the cover art
+The **Decks** tab shows each deck as a tile: the cover art
 (the commander by default), a color bar for the deck's colors, card count,
 value and when it was last changed, the format and bracket, and a ⋮ menu with
 shortcuts (stacks, text, table, playtest, suggestions, proxies). The footer
@@ -304,8 +304,8 @@ saves a version first, so you can undo it.
 **Maybeboard.** A pile of cards you're considering. It's listed last, doesn't
 count toward the deck size, value, rules checks, bracket, playtest or "Cards you
 need", and cards can go in without passing the format's rules. Move them into
-the deck when you decide. Archidekt and pasted lists bring their Maybeboard
-along (never into your collection).
+the deck when you decide. Pasted lists bring their Maybeboard along (never
+into your collection).
 
 **Tags.** Label cards in a deck (Ramp, Card draw, Removal, Win condition…) and
 switch **Group by** from *Card type* to *Tag* to see the deck by role. Cards
@@ -348,7 +348,7 @@ pick any saved version from the "since" list. Printings of the same card count
 together.
 
 Versions are saved automatically before you edit (one per editing session: if
-the last one is over 30 minutes old), before a list import or Archidekt update
+the last one is over 30 minutes old), before a pasted list
 replaces the deck, and the first time you open a deck. **Versions** (next to the
 checkbox) lets you save one by hand with a name, compare with any version, or
 **Restore** a whole version (the list you had is saved first, so you can undo it).
@@ -436,17 +436,15 @@ Mass Entry or Card Kingdom. Once the cards arrive, tick "I've got these
 cards" and press the button to add them to your collection. Deck tiles on the
 Decks tab show how many cards each deck still needs.
 
-**Archidekt.** **Decks → Import from Archidekt**: enter your Archidekt
-username (or profile link, like `archidekt.com/u/yourname`) and press **Link
-account**. No password is needed; only the username is saved. Your public decks
-are listed, each with an **Import** button that copies the exact printings,
-puts the commander in the command zone and the Sideboard category in the
-sideboard, and skips the Maybeboard. Unlisted decks don't appear in the list,
-but you can paste a deck's link into **Import by link**; private decks can't be
-read. After changing a deck on Archidekt, press **Update from Archidekt** on its
-deck page to replace the list here with the current one. Archidekt has no
-official API, so this uses the public data its own site reads; if Archidekt
-changes it, the app shows a message instead of importing.
+**Decks from Archidekt (or any other site).** Mana Ledger doesn't connect to
+Archidekt; copy and paste instead. On Archidekt, open the deck, choose
+**Export**, keep categories on and copy the text. Paste it into **Paste a deck
+list** when making a new deck, or **Import list** on an existing one. The exact
+printings come along, the commander goes in the command zone, Sideboard and
+Maybeboard categories go to those sections, and other categories (Ramp, Draw...)
+become the cards' tags. To update a deck after changing it on Archidekt, paste
+the new list and tick **Replace the cards already in** the deck. A version is
+saved first, so you can undo it.
 
 **Precons.** **Decks → Start from a precon** lists every official
 preconstructed deck Wizards has released (Commander decks by default; pick
@@ -629,7 +627,6 @@ python manage.py refresh_prices
 | `collection/importer.py` | Reads a pasted card or deck list (with Commander/Deck/Sideboard sections) and matches each line to a Scryfall printing |
 | `collection/precons.py` | Official precon catalog and decklists from MTGJSON |
 | `collection/suggest.py` | Deck suggestions: roles, themes, bracket-safe candidates, swaps, commander ideas |
-| `collection/archidekt.py` | Public Archidekt decks: a user's deck list and one deck's cards |
 | `collection/backup.py` | Backup download and all-or-nothing restore |
 | `collection/search.py` | Turns a search like `t:creature mv<=3` into a database filter, plus a plain-English summary |
 | `collection/decks.py` | Deck rules and stats: format checks, mana curve, colors, cards you need and the shopping list, export text (plain Python, no database calls) |
